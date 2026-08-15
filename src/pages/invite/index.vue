@@ -64,11 +64,11 @@ function viewMap() {
 async function confirmJoin() {
   const name = joinName.value.trim()
   if (!name) {
-    joinError.value = '请输入显示名称'
+    joinError.value = '请输入名称'
     return
   }
   if (name.length > 20) {
-    joinError.value = '显示名称不能超过 20 字'
+    joinError.value = '名称不能超过 20 字'
     return
   }
   if (!token.value && !code.value) {
@@ -132,17 +132,13 @@ onLoad((query) => {
         </text>
 
         <view class="group-card">
-          <view class="group-icon-wrap">
-            <text class="group-icon">🍊</text>
-          </view>
           <view class="group-info">
             <text class="group-label">邀请你加入</text>
             <text class="group-name">{{ preview.name }}</text>
             <text class="group-meta">{{ preview.memberCount }} 位成员 · 一起发现好店</text>
           </view>
           <view class="member-faces">
-            <image src="/static/tabbar/调皮.png" mode="aspectFit" />
-            <image src="/static/tabbar/惊讶.png" mode="aspectFit" />
+            <image src="/static/tabbar/汉堡2.jpg" mode="aspectFit" />
           </view>
         </view>
 
@@ -172,22 +168,23 @@ onLoad((query) => {
         <button
           v-if="mode === 'invite' && !preview.alreadyMember"
           class="action-btn primary-action"
+          hover-class="primary-action-hover"
           :disabled="joining"
           :loading="joining"
           @click="confirmJoin"
         >
-          <text class="action-star">★</text>
           加入这份清单
         </button>
         <button
           v-else
           class="action-btn primary-action"
+          hover-class="primary-action-hover"
           @click="viewMap"
         >
           {{ preview.alreadyMember ? '进入我的清单' : '查看共享地图' }}
         </button>
         <button
-          v-if="mode === 'invite' && !preview.alreadyMember"
+          v-if="false && mode === 'invite' && !preview.alreadyMember"
           class="action-btn secondary-action"
           @click="viewMap"
         >
@@ -202,7 +199,7 @@ onLoad((query) => {
       </view>
       <text class="state-title">这份邀请暂时打不开</text>
       <text class="state-copy">邀请可能已过期或被撤销，请让朋友重新生成</text>
-      <button class="action-btn primary-action state-action" @click="goManage">
+      <button class="action-btn primary-action state-action" hover-class="primary-action-hover" @click="goManage">
         返回我的清单
       </button>
     </view>
@@ -240,25 +237,6 @@ onLoad((query) => {
   width: 200rpx;
   height: 200rpx;
   border-radius: 32rpx;
-}
-
-.spark {
-  position: absolute;
-  z-index: 2;
-  color: $warning;
-}
-
-.spark-one {
-  top: 8rpx;
-  left: 176rpx;
-  font-size: 48rpx;
-  transform: rotate(12deg);
-}
-
-.spark-two {
-  top: 60rpx;
-  left: 188rpx;
-  font-size: 18rpx;
 }
 
 .eyebrow {
@@ -302,21 +280,6 @@ onLoad((query) => {
   box-shadow: 0 14rpx 34rpx rgba(55, 41, 26, 0.08);
 }
 
-.group-icon-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 84rpx;
-  height: 84rpx;
-  flex: none;
-  border-radius: 24rpx;
-  background-color: rgba(255, 199, 39, 0.22);
-}
-
-.group-icon {
-  font-size: 44rpx;
-}
-
 .group-info {
   display: flex;
   flex: 1;
@@ -352,15 +315,11 @@ onLoad((query) => {
   margin-left: 12rpx;
 
   image {
-    width: 50rpx;
-    height: 50rpx;
+    width: 90rpx;
+    height: 90rpx;
     border: 4rpx solid $card-bg;
     border-radius: 50%;
     background-color: $section-bg;
-
-    & + image {
-      margin-left: -16rpx;
-    }
   }
 }
 
@@ -444,11 +403,26 @@ onLoad((query) => {
   color: #fff;
   line-height: 96rpx;
   box-shadow: 0 14rpx 28rpx rgba(54, 57, 59, 0.2);
+
+  &::after {
+    color: #fff;
+  }
 }
 
 .primary-action[disabled] {
-  color: rgba(255, 255, 255, 0.72);
   opacity: 0.72;
+
+  &::after {
+    color: rgba(255, 255, 255, 0.72);
+  }
+}
+
+.primary-action-hover {
+  background-color: #2a2c2e;
+
+  &::after {
+    color: #fff;
+  }
 }
 
 .action-star {
