@@ -82,6 +82,27 @@ const nearbyLoading = ref(false)
 
 let markerSeq = 0
 
+function isWeixinDevtools() {
+  try {
+    return uni.getDeviceInfo().platform === 'devtools'
+  } catch {
+    return false
+  }
+}
+
+function moveMapToLocation(latitude: number, longitude: number) {
+  // 微信开发者工具尚未实现 MapContext.moveToLocation，调用会抛出
+  // appServiceSDKScriptError。开发工具中依靠响应式 center 更新即可移动地图。
+  if (isWeixinDevtools()) return
+  uni.createMapContext('shopMap').moveToLocation({
+    latitude,
+    longitude,
+    fail: () => {
+      // 真机定位中心已经由 center 同步，原生地图移动失败时无需再向上抛错。
+    },
+  })
+}
+
 function shopOf(s: ShopView | PublicShopView): ShopView | null {
   return 'creatorName' in s ? (s as ShopView) : null
 }
@@ -117,7 +138,7 @@ async function fitShopMarkers(list: (ShopView | PublicShopView)[]) {
   if (list.length === 1) {
     center.value = { latitude: list[0].latitude, longitude: list[0].longitude }
     mapScale.value = 15
-    mapCtx.moveToLocation({ latitude: list[0].latitude, longitude: list[0].longitude })
+    moveMapToLocation(list[0].latitude, list[0].longitude)
     return
   }
   mapCtx.includePoints({
@@ -194,10 +215,7 @@ async function updateCurrentLocation(showFailureModal: boolean) {
       center.value = res.position
       mapScale.value = 16
       await nextTick()
-      uni.createMapContext('shopMap').moveToLocation({
-        latitude: res.position.latitude,
-        longitude: res.position.longitude,
-      })
+      moveMapToLocation(res.position.latitude, res.position.longitude)
     }
   } else {
     locationMsg.value = hasPosition.value

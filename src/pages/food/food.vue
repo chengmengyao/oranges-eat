@@ -148,8 +148,9 @@ function resetAndLoad() {
   loadPage(true)
 }
 
-function onCategoryChange(e: { value: CategoryFilter }) {
-  category.value = e.value
+function onCategoryChange(value: CategoryFilter) {
+  if (category.value === value) return
+  category.value = value
   resetAndLoad()
 }
 
@@ -306,7 +307,19 @@ onReachBottom(() => {
       <text class="group-tag">{{ isMember ? (currentGroup.isOwner ? '创建者' : '成员') : '访客' }}</text>
     </view>
 
-    <wd-tabs :model-value="category" :tabs="tabs" @change="onCategoryChange" />
+    <scroll-view class="category-tabs" scroll-x :show-scrollbar="false">
+      <view class="category-tabs-inner">
+        <view
+          v-for="tab in tabs"
+          :key="tab.value"
+          class="category-tab"
+          :class="{ active: category === tab.value }"
+          @click="onCategoryChange(tab.value)"
+        >
+          <text>{{ tab.label }}</text>
+        </view>
+      </view>
+    </scroll-view>
 
     <view v-if="loadStatusText && shops.length === 0" class="state-box">
       <text>{{ loadStatusText }}</text>
@@ -408,6 +421,44 @@ onReachBottom(() => {
   background-color: #F5F5F5;
   border-radius: 8rpx;
   padding: 4rpx 12rpx;
+}
+
+.category-tabs {
+  width: 100%;
+  white-space: nowrap;
+  border-bottom: 1rpx solid #E5E5E5;
+}
+
+.category-tabs-inner {
+  display: flex;
+  align-items: center;
+}
+
+.category-tab {
+  position: relative;
+  flex: 1 0 auto;
+  min-width: 120rpx;
+  padding: 22rpx 28rpx;
+  text-align: center;
+  color: #6B6F73;
+  font-size: 28rpx;
+
+  &.active {
+    color: #37291a;
+    font-weight: 700;
+
+    &::after {
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      width: 40rpx;
+      height: 6rpx;
+      border-radius: 999rpx;
+      background-color: #F6A623;
+      content: '';
+      transform: translateX(-50%);
+    }
+  }
 }
 
 .state-box {
