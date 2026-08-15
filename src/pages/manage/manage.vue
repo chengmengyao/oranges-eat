@@ -3,7 +3,6 @@ import { ref } from 'vue'
 import { onShow, onShareAppMessage } from '@dcloudio/uni-app'
 import type { GroupView, MemberView } from '@/types/group'
 import {
-  bootstrap,
   createGroup,
   listMyGroups,
   listMembers,
@@ -45,16 +44,22 @@ const removing = ref(false)
 const deleting = ref(false)
 
 const cloudMissing = ref(!state.ready)
-const recentPublicGroup = store.getRecentPublicGroup()
+const recentPublicGroup = ref(store.getRecentPublicGroup())
 
 function loadGroups() {
   return listMyGroups().then((list) => {
+    const previousGroupId = currentGroupId.value
     groups.value = list
     store.setGroups(list)
     const cur = store.currentGroup()
     if (cur) {
       currentGroupId.value = cur.id
       currentGroup.value = cur
+      if (previousGroupId !== cur.id) members.value = []
+    } else {
+      currentGroupId.value = ''
+      currentGroup.value = null
+      members.value = []
     }
   })
 }
@@ -285,11 +290,12 @@ function confirmDeleteGroup(g: GroupView) {
 }
 
 function viewPublicMap() {
-  if (!recentPublicGroup) return
+  if (!recentPublicGroup.value) return
   uni.switchTab({ url: '/pages/index/index' })
 }
 
 onShow(() => {
+  recentPublicGroup.value = store.getRecentPublicGroup()
   refresh()
 })
 </script>

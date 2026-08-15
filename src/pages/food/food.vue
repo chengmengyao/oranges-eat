@@ -12,6 +12,7 @@ import {
 } from '@/services/shop'
 import { listMyGroups } from '@/services/group'
 import { useGroupStore } from '@/stores/group'
+import { resolveMapGroup } from '@/utils/map-group'
 import { CATEGORY_LABELS, PAGE_SIZE } from '@/constants/shop'
 import { validateShopForm, normalizeText } from '@/utils/shop-validation'
 
@@ -65,17 +66,20 @@ function isShopView(s: ShopView | PublicShopView): s is ShopView {
 async function loadGroups() {
   const groups = await listMyGroups()
   store.setGroups(groups)
-  const cur = store.currentGroup()
-  if (cur) {
-    currentGroup.value = cur
-    groupId.value = cur.id
-    publicId.value = cur.publicId
-    isMember.value = true
-  }
+  const selection = resolveMapGroup(
+    groups,
+    store.state.currentGroupId,
+    '',
+    store.getRecentPublicGroup(),
+  )
+  currentGroup.value = selection.group
+  groupId.value = selection.isMember ? selection.group?.id || '' : ''
+  publicId.value = selection.publicId
+  isMember.value = selection.isMember
 }
 
 async function loadPage(reset: boolean) {
-  if (loading.value) return
+  if (!reset && loading.value) return
   loading.value = true
   errorMsg.value = ''
   const seq = ++requestSeq.value
@@ -119,16 +123,38 @@ async function loadPage(reset: boolean) {
     // 成员身份失效（被移除）：降级为公开只读
     if (message.includes('未加入') || message.includes('FORBIDDEN')) {
       isMember.value = false
+      groupId.value = ''
+      if (currentGroup.value) {
+        currentGroup.value = {
+          ...currentGroup.value,
+          id: '',
+          role: 'member',
+          isOwner: false,
+        }
+      }
       // 清理成员缓存，保留公开浏览
       store.reset()
       errorMsg.value = ''
       if (publicId.value) {
-        const res = await listPublicShops(publicId.value, undefined, category.value)
-        if (seq !== requestSeq.value) return
-        shops.value = res.shops
-        hasMore.value = res.hasMore
-        cursor.value = res.nextCursor || ''
-        firstLoaded.value = true
+        try {
+          const res = await listPublicShops(publicId.value, undefined, category.value)
+          if (seq !== requestSeq.value) return
+          shops.value = res.shops
+          hasMore.value = res.hasMore
+          cursor.value = res.nextCursor || ''
+          firstLoaded.value = true
+        } catch (publicErr) {
+          if (seq !== requestSeq.value) return
+          const publicMessage = publicErr instanceof Error ? publicErr.message : '加载失败'
+          errorMsg.value = publicMessage
+          shops.value = []
+          firstLoaded.value = true
+          if (publicMessage.includes('不存在') || publicMessage.includes('不可访问')) {
+            store.clearRecentPublicGroup()
+            currentGroup.value = null
+            publicId.value = ''
+          }
+        }
         return
       }
     }
@@ -144,8 +170,7 @@ async function loadPage(reset: boolean) {
 function resetAndLoad() {
   cursor.value = ''
   hasMore.value = false
-  requestSeq.value++
-  loadPage(true)
+  return loadPage(true)
 }
 
 function onCategoryChange(value: CategoryFilter) {
@@ -161,7 +186,7 @@ function goManage() {
 async function refresh() {
   try {
     await loadGroups()
-    resetAndLoad()
+    await resetAndLoad()
   } catch (err) {
     errorMsg.value = err instanceof Error ? err.message : '加载失败'
     firstLoaded.value = true

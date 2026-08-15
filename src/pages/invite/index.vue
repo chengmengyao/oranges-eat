@@ -20,33 +20,38 @@ const preview = ref<GroupPreview | null>(null)
 const joinName = ref('')
 const joining = ref(false)
 const joinError = ref('')
+const loadError = ref('')
 const mode = ref<'invite' | 'public'>('invite')
 
 async function load() {
   loading.value = true
-  if (token.value || code.value) {
-    const res = await previewInvite(token.value, code.value)
-    if (res) {
-      preview.value = res
-      publicId.value = res.publicId
-      store.setRecentPublicGroup({ publicId: res.publicId, name: res.name })
-      mode.value = 'invite'
-      loading.value = false
-      return
+  loadError.value = ''
+  preview.value = null
+  try {
+    if (token.value || code.value) {
+      const res = await previewInvite(token.value, code.value)
+      if (res) {
+        preview.value = res
+        publicId.value = res.publicId
+        store.setRecentPublicGroup({ publicId: res.publicId, name: res.name })
+        mode.value = 'invite'
+        return
+      }
     }
-  }
-  // token 无效或无 token：退化为公开只读
-  if (publicId.value) {
-    try {
+
+    // token 无效或无 token：退化为公开只读
+    if (publicId.value) {
       const res = await getPublicGroup(publicId.value)
       preview.value = res
       store.setRecentPublicGroup({ publicId: res.publicId, name: res.name })
       mode.value = 'public'
-    } catch {
-      preview.value = null
     }
+  } catch (err) {
+    console.error('加载邀请失败', err)
+    loadError.value = '加载失败，请检查网络后重试'
+  } finally {
+    loading.value = false
   }
-  loading.value = false
 }
 
 function goManage() {
@@ -55,7 +60,6 @@ function goManage() {
 
 function viewMap() {
   if (!publicId.value) return
-  uni.removeStorageSync('invite_token')
   token.value = ''
   store.setRecentPublicGroup({ publicId: publicId.value, name: preview.value?.name || '美食清单' })
   uni.reLaunch({ url: `/pages/index/index?publicId=${encodeURIComponent(publicId.value)}` })
@@ -79,7 +83,6 @@ async function confirmJoin() {
   joinError.value = ''
   try {
     const res = await acceptInvite(token.value, name, code.value)
-    uni.removeStorageSync('invite_token')
     token.value = ''
     code.value = ''
     preview.value = res
@@ -101,9 +104,6 @@ onLoad((query) => {
   token.value = entry.token
   publicId.value = entry.publicId
   code.value = entry.code
-  if (token.value) {
-    uni.setStorageSync('invite_token', token.value)
-  }
   load()
 })
 </script>
@@ -183,13 +183,6 @@ onLoad((query) => {
         >
           {{ preview.alreadyMember ? '进入我的清单' : '查看共享地图' }}
         </button>
-        <button
-          v-if="false && mode === 'invite' && !preview.alreadyMember"
-          class="action-btn secondary-action"
-          @click="viewMap"
-        >
-          先看看地图
-        </button>
       </view>
     </template>
 
@@ -197,10 +190,16 @@ onLoad((query) => {
       <view class="invalid-visual">
         <image src="/static/tabbar/惊讶.png" mode="aspectFit" />
       </view>
-      <text class="state-title">这份邀请暂时打不开</text>
-      <text class="state-copy">邀请可能已过期或被撤销，请让朋友重新生成</text>
-      <button class="action-btn primary-action state-action" hover-class="primary-action-hover" @click="goManage">
-        返回我的清单
+      <text class="state-title">{{ loadError ? '邀请加载失败' : '这份邀请暂时打不开' }}</text>
+      <text class="state-copy">
+        {{ loadError || '邀请可能已过期或被撤销，请让朋友重新生成' }}
+      </text>
+      <button
+        class="action-btn primary-action state-action"
+        hover-class="primary-action-hover"
+        @click="loadError ? load() : goManage()"
+      >
+        {{ loadError ? '重新加载' : '返回我的清单' }}
       </button>
     </view>
   </view>
@@ -428,15 +427,6 @@ onLoad((query) => {
 .action-star {
   margin-right: 12rpx;
   color: $warning;
-}
-
-.secondary-action {
-  height: 84rpx;
-  margin-top: 18rpx;
-  border-radius: 42rpx;
-  background-color: rgba(254, 252, 249, 0.72);
-  color: $text-primary;
-  line-height: 84rpx;
 }
 
 .state-page {

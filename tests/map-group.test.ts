@@ -45,4 +45,18 @@ describe('resolveMapGroup', () => {
       isMember: false,
     })
   })
+
+  it('没有成员清单时降级为最近访问的公开清单', () => {
+    const selection = resolveMapGroup(
+      [],
+      ownGroup.id,
+      '',
+      { publicId: 'public-visited', name: '最近访问的清单' },
+    )
+
+    expect(selection.publicId).toBe('public-visited')
+    expect(selection.group?.name).toBe('最近访问的清单')
+    expect(selection.group?.id).toBe('')
+    expect(selection.isMember).toBe(false)
+  })
 })
