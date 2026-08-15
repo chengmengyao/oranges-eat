@@ -8,6 +8,7 @@ import {
   getPublicGroup,
 } from '@/services/group'
 import { useGroupStore } from '@/stores/group'
+import { parseInviteEntry } from '@/utils/invite-entry'
 
 const store = useGroupStore()
 
@@ -96,17 +97,10 @@ async function confirmJoin() {
 }
 
 onLoad((query) => {
-  token.value = decodeURIComponent((query?.token as string) || '')
-  publicId.value = decodeURIComponent((query?.publicId as string) || '')
-  const scene = decodeURIComponent((query?.scene as string) || '')
-  if (scene) {
-    const parts = scene.split('&')
-    for (const part of parts) {
-      if (part.startsWith('c=')) {
-        code.value = part.slice(2)
-      }
-    }
-  }
+  const entry = parseInviteEntry(query)
+  token.value = entry.token
+  publicId.value = entry.publicId
+  code.value = entry.code
   if (token.value) {
     uni.setStorageSync('invite_token', token.value)
   }
@@ -157,7 +151,7 @@ onLoad((query) => {
     </template>
 
     <view v-else class="center card">
-      <text class="emoji">😕</text>
+      <image class="empty-image" src="/static/tabbar/惊讶.png" mode="aspectFit" />
       <text class="title">清单不存在或链接已失效</text>
       <text class="muted">请向创建者获取新的邀请链接</text>
       <button class="btn-primary" @click="goManage">前往管理</button>
@@ -189,6 +183,12 @@ onLoad((query) => {
 
 .emoji {
   font-size: 72rpx;
+}
+
+.empty-image {
+  width: 120rpx;
+  height: 120rpx;
+  margin-bottom: 16rpx;
 }
 
 .title {

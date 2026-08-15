@@ -573,7 +573,7 @@ onReachBottom(() => {
 
 .act-btn {
   border: none;
-  border-radius: 14rpx;
+  border-radius: 16rpx;
   font-size: 26rpx;
   height: 56rpx;
   line-height: 56rpx;
@@ -589,12 +589,12 @@ onReachBottom(() => {
   }
 
   &.edit {
-    background-color: #F5F5F5;
-    color: #36393B;
+    background-color: #36393B;
+    color: #FFFFFF;
   }
 
   &.del {
-    background-color: #FFFFFF;
+    background-color: transparent;
     color: #36393B;
     border: 1rpx solid #36393B;
   }

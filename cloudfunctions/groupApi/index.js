@@ -1,6 +1,7 @@
 const cloud = require('wx-server-sdk')
 const crypto = require('crypto')
 const { evaluateInvite } = require('./invite')
+const { ensurePersistentShortCode } = require('./invite-code')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -472,13 +473,26 @@ async function createInviteQrCode(event, openId) {
   const group = await findGroupById(invite.groupId)
   if (!group) return fail('清单不存在', 'GROUP_NOT_FOUND')
 
-  const shortCode = invite.shortCode || generateShortCode()
-  if (!invite.shortCode) {
-    await db
-      .collection(INVITES)
-      .doc(invite._id)
-      .update({ data: { shortCode, updatedAt: Date.now() } })
-      .catch(() => {})
+  let shortCode = ''
+  try {
+    shortCode = await ensurePersistentShortCode(
+      invite,
+      generateShortCode,
+      async (inviteId, generatedCode) => {
+        const updateRes = await db
+          .collection(INVITES)
+          .doc(inviteId)
+          .update({ data: { shortCode: generatedCode, updatedAt: Date.now() } })
+        return Boolean(updateRes && updateRes.stats && updateRes.stats.updated === 1)
+      },
+    )
+    const persistedInvite = await getInviteByShortCode(shortCode)
+    if (!persistedInvite || persistedInvite._id !== invite._id) {
+      return fail('邀请短码保存失败，请重新生成邀请', 'QRCODE_FAILED')
+    }
+  } catch (err) {
+    console.error('persist invite shortCode failed', err && err.message ? err.message : 'unknown')
+    return fail('邀请短码保存失败，请重新生成邀请', 'QRCODE_FAILED')
   }
   const scene = `c=${shortCode}`
   const page = 'pages/invite/index'
