@@ -308,7 +308,7 @@ onShow(() => {
     </view>
 
     <view v-else-if="groups.length === 0 && !createMode && !recentPublicGroup" class="card empty-card">
-      <text class="emoji">🍊</text>
+      <image class="empty-image" src="/static/tabbar/调皮.png" mode="aspectFit" />
       <text class="empty-title">创建你的第一份共享清单</text>
       <text class="muted">邀请朋友一起添加想吃的店</text>
       <button class="btn-primary" @click="createMode = true">开始创建</button>
@@ -487,6 +487,12 @@ onShow(() => {
 
 .emoji {
   font-size: 72rpx;
+}
+
+.empty-image {
+  width: 120rpx;
+  height: 120rpx;
+  margin-bottom: 16rpx;
 }
 
 .empty-title {

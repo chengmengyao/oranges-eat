@@ -59,7 +59,6 @@ const cachedPosition = getLastPosition()
 const center = ref(cachedPosition || getDefaultCenter())
 const currentPosition = ref(cachedPosition)
 const hasPosition = ref(Boolean(cachedPosition))
-const locationMsg = ref(hasPosition.value ? '' : '尚未获取当前位置')
 const locating = ref(false)
 
 const currentGroup = ref<GroupView | null>(null)
@@ -205,12 +204,10 @@ async function refresh() {
 async function updateCurrentLocation(showFailureModal: boolean) {
   if (locating.value) return
   locating.value = true
-  locationMsg.value = '正在获取当前位置…'
   const res = await getCurrentLocation()
   if (res.ok) {
     currentPosition.value = res.position
     hasPosition.value = true
-    locationMsg.value = ''
     if (showFailureModal) {
       center.value = res.position
       mapScale.value = 16
@@ -218,9 +215,6 @@ async function updateCurrentLocation(showFailureModal: boolean) {
       moveMapToLocation(res.position.latitude, res.position.longitude)
     }
   } else {
-    locationMsg.value = hasPosition.value
-      ? '当前定位失败，正在使用上次位置'
-      : '定位失败，请检查权限设置'
     if (!showFailureModal) {
       locating.value = false
       return
@@ -408,8 +402,8 @@ onShow(() => {
     </view>
 
     <view v-if="!currentGroup" class="no-group-tip" @click="goManage">
-      <text class="tip-text">尚未选择共享清单</text>
-      <text class="tip-action">去管理 ›</text>
+      <text class="tip-text">您还没有添加要共享的清单</text>
+      <text class="tip-action">去添加 ›</text>
     </view>
 
     <view class="zoom-group">
@@ -429,10 +423,6 @@ onShow(() => {
       <view class="fab" @click="openNearby">
         <image class="fab-icon" src="/static/tabbar/离我最近.png" mode="aspectFit" />
       </view>
-    </view>
-
-    <view class="location-status" @click="onGetLocation">
-      <text>{{ locationMsg || '已定位当前位置' }}</text>
     </view>
 
     <!-- 店铺详情浮层 -->
@@ -762,18 +752,6 @@ onShow(() => {
 .fab-icon-location {
   width: 36rpx;
   height: 36rpx;
-}
-
-.location-status {
-  position: absolute;
-  left: 20rpx;
-  bottom: calc(40rpx + env(safe-area-inset-bottom));
-  background-color: rgba(255, 255, 255, 0.95);
-  border: 1rpx solid #E5E5E5;
-  border-radius: 999rpx;
-  padding: 10rpx 20rpx;
-  font-size: 22rpx;
-  color: #6B6F73;
 }
 
 .detail-sheet {

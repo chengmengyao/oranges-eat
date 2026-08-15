@@ -154,6 +154,10 @@ function onCategoryChange(value: CategoryFilter) {
   resetAndLoad()
 }
 
+function goManage() {
+  uni.switchTab({ url: '/pages/manage/manage' })
+}
+
 async function refresh() {
   try {
     await loadGroups()
@@ -325,7 +329,14 @@ onReachBottom(() => {
 
     <view v-if="loadStatusText && shops.length === 0" class="state-box">
       <text>{{ loadStatusText }}</text>
-      <button v-if="errorMsg" class="btn-plain" @click="resetAndLoad">重试</button>
+      <button
+        v-if="errorMsg === '尚未选择共享清单'"
+        class="btn-primary"
+        @click="goManage"
+      >
+        去添加
+      </button>
+      <button v-else-if="errorMsg" class="btn-plain" @click="resetAndLoad">重试</button>
       <button v-else-if="isMember" class="btn-primary" @click="openCreate">去添加</button>
     </view>
 
@@ -355,9 +366,6 @@ onReachBottom(() => {
     </view>
 
     <button v-if="isMember" class="fab" @click="openCreate">＋</button>
-    <view v-else class="visitor-tip">
-      <text>访客只读浏览 · 加入清单后可以添加店铺</text>
-    </view>
 
     <wd-popup v-model="showForm" position="bottom" custom-style="padding: 40rpx 32rpx 24rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx;">
       <view class="form-body">
@@ -644,19 +652,6 @@ onReachBottom(() => {
   &::after {
     border: none;
   }
-}
-
-.visitor-tip {
-  position: fixed;
-  left: 24rpx;
-  right: 24rpx;
-  bottom: calc(24rpx + env(safe-area-inset-bottom));
-  background-color: #F5F5F5;
-  color: #36393B;
-  font-size: 24rpx;
-  border-radius: 16rpx;
-  padding: 16rpx;
-  text-align: center;
 }
 
 .form-body {
