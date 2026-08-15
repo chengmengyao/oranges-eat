@@ -216,7 +216,7 @@ function confirmRemove(m: MemberView) {
     title: '移除成员',
     content: `确认移除「${m.displayName}」？其添加的店铺会保留。`,
     confirmText: '移除',
-    confirmColor: '#b42318',
+    confirmColor: '#36393B',
     success: async (res) => {
       if (!res.confirm || !currentGroupId.value) return
       removing.value = true
@@ -243,7 +243,7 @@ function confirmEditGroup(g: GroupView) {
     editable: true,
     placeholderText: g.name,
     confirmText: '保存',
-    confirmColor: '#980000',
+    confirmColor: '#36393B',
     success: async (res) => {
       if (!res.confirm) return
       const name = (res.content || '').trim()
@@ -267,7 +267,7 @@ function confirmDeleteGroup(g: GroupView) {
     title: '删除清单',
     content: `确认删除「${g.name}」？将同时删除所有成员、邀请和店铺记录，且不可恢复。`,
     confirmText: '删除',
-    confirmColor: '#b42318',
+    confirmColor: '#36393B',
     success: async (res) => {
       if (!res.confirm) return
       deleting.value = true
@@ -465,8 +465,8 @@ onShow(() => {
 }
 
 .card {
-  background-color: #fefcf9;
-  border: 1rpx solid #f5a7a2;
+  background-color: #FEF9FF;
+  border: 1rpx solid #36393B;
   border-radius: 24rpx;
   padding: 32rpx;
   display: flex;
@@ -475,8 +475,8 @@ onShow(() => {
 }
 
 .warn-card {
-  border-left: 8rpx solid #9a5c00;
-  background-color: #fff7e8;
+  border-left: 8rpx solid #36393B;
+  background-color: #F5F5F5;
 }
 
 .empty-card {
@@ -510,22 +510,22 @@ onShow(() => {
 
 .muted {
   font-size: 26rpx;
-  color: #73675a;
+  color: #6B6F73;
   line-height: 1.5;
 }
 
 .warn-title {
   font-size: 32rpx;
   font-weight: 700;
-  color: #9a5c00;
+  color: #36393B;
 }
 
 .input {
   height: 72rpx;
   padding: 0 24rpx;
   border-radius: 14rpx;
-  background-color: #fff;
-  border: 1rpx solid #f5a7a2;
+  background-color: #FFFFFF;
+  border: 1rpx solid #36393B;
   font-size: 28rpx;
 }
 
@@ -552,13 +552,13 @@ onShow(() => {
 }
 
 .btn-primary {
-  background-color: #fd355a;
-  color: #fff;
+  background-color: #36393B;
+  color: #FFFFFF;
 }
 
 .btn-plain {
-  background-color: #ffdece;
-  color: #980000;
+  background-color: #F5F5F5;
+  color: #36393B;
 }
 
 .create-link {
@@ -578,12 +578,12 @@ onShow(() => {
   align-items: center;
   padding: 28rpx;
   border-radius: 18rpx;
-  background-color: #fefcf9;
-  border: 1rpx solid #ead8cf;
+  background-color: #FEF9FF;
+  border: 1rpx solid #E5E5E5;
 
   &.active {
-    border-color: #fd355a;
-    background-color: #ffebec;
+    border-color: #36393B;
+    background-color: #F5F5F5;
   }
 }
 
@@ -606,21 +606,21 @@ onShow(() => {
 }
 
 .check {
-  color: #fd355a;
+  color: #36393B;
   font-weight: 700;
   font-size: 36rpx;
 }
 
 .tag {
   font-size: 22rpx;
-  color: #980000;
-  background-color: #ffdece;
+  color: #36393B;
+  background-color: #F5F5F5;
   border-radius: 8rpx;
   padding: 4rpx 12rpx;
 
   &.self {
-    background-color: #69a2ee;
-    color: #fff;
+    background-color: #36393B;
+    color: #FFFFFF;
   }
 }
 
@@ -629,7 +629,7 @@ onShow(() => {
   justify-content: space-between;
   align-items: center;
   padding: 22rpx 0;
-  border-bottom: 1rpx solid #f0e6dc;
+  border-bottom: 1rpx solid #E5E5E5;
 }
 
 .member-info {
@@ -645,8 +645,8 @@ onShow(() => {
 
 .remove-btn {
   background-color: transparent;
-  color: #b42318;
-  border: 1rpx solid #b42318;
+  color: #36393B;
+  border: 1rpx solid #36393B;
   border-radius: 14rpx;
   font-size: 24rpx;
   height: 52rpx;
@@ -661,8 +661,8 @@ onShow(() => {
 
 .edit-btn {
   background-color: transparent;
-  color: #980000;
-  border: 1rpx solid #f5a7a2;
+  color: #36393B;
+  border: 1rpx solid #36393B;
   border-radius: 14rpx;
   font-size: 24rpx;
   height: 52rpx;
@@ -716,7 +716,7 @@ onShow(() => {
   width: 360rpx;
   height: 360rpx;
   border-radius: 16rpx;
-  background-color: #fff;
+  background-color: #FFFFFF;
 }
 
 .qr-placeholder {
@@ -727,7 +727,7 @@ onShow(() => {
   width: 360rpx;
   height: 360rpx;
   border-radius: 16rpx;
-  background-color: #f8f8f8;
+  background-color: #F5F5F5;
   gap: 8rpx;
 }
 </style>

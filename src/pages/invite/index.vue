@@ -199,7 +199,7 @@ onLoad((query) => {
 
 .muted {
   font-size: 26rpx;
-  color: #73675a;
+  color: #6B6F73;
 }
 
 .entry-list {
@@ -211,8 +211,8 @@ onLoad((query) => {
 }
 
 .btn-primary {
-  background-color: #fd355a;
-  color: #fff;
+  background-color: #36393B;
+  color: #FFFFFF;
   border-radius: 14rpx;
   border: none;
   font-size: 28rpx;
@@ -232,19 +232,19 @@ onLoad((query) => {
   gap: 16rpx;
   padding: 24rpx;
   border-radius: 16rpx;
-  background-color: #ffebec;
+  background-color: #F5F5F5;
 }
 
 .input {
   height: 80rpx;
   padding: 0 20rpx;
   border-radius: 12rpx;
-  background-color: #fefcf9;
-  border: 1rpx solid #f5a7a2;
+  background-color: #FEF9FF;
+  border: 1rpx solid #36393B;
 }
 
 .error {
-  color: #b42318;
+  color: #36393B;
   font-size: 24rpx;
 }
 </style>

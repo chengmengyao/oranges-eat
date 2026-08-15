@@ -103,7 +103,7 @@ function buildMarkerView(list: (ShopView | PublicShopView)[]) {
       color: '#37291a',
       fontSize: 12,
       borderRadius: 6,
-      bgColor: '#fefcf9',
+      bgColor: '#FEF9FF',
       padding: 6,
       display: 'ALWAYS' as const,
     },
@@ -491,12 +491,12 @@ onShow(() => {
   justify-content: center;
   gap: 20rpx;
   background-color: #efe9d9;
-  color: #73675a;
+  color: #6B6F73;
 }
 
 .retry-btn {
-  background-color: #fd355a;
-  color: #fff;
+  background-color: #36393B;
+  color: #FFFFFF;
   border: none;
   border-radius: 14rpx;
   font-size: 26rpx;
@@ -530,22 +530,22 @@ onShow(() => {
   align-items: center;
   justify-content: center;
   gap: 16rpx;
-  background-color: rgba(254, 252, 249, 0.95);
-  border: 1rpx solid #f5a7a2;
+  background-color: rgba(255, 255, 255, 0.95);
+  border: 1rpx solid #36393B;
   border-radius: 999rpx;
   padding: 16rpx 32rpx;
-  box-shadow: 0 4rpx 16rpx rgba(55, 41, 26, 0.08);
+  box-shadow: 0 4rpx 16rpx rgba(54, 57, 59, 0.10);
 }
 
 .tip-text {
   font-size: 26rpx;
-  color: #73675a;
+  color: #6B6F73;
 }
 
 .tip-action {
   font-size: 26rpx;
   font-weight: 600;
-  color: #980000;
+  color: #36393B;
 }
 
 .group-chip {
@@ -553,11 +553,11 @@ onShow(() => {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  background-color: #fefcf9;
-  border: 1rpx solid #ead8cf;
+  background-color: #FEF9FF;
+  border: 1rpx solid #E5E5E5;
   border-radius: 999rpx;
   padding: 10rpx 20rpx;
-  box-shadow: 0 4rpx 16rpx rgba(55, 41, 26, 0.08);
+  box-shadow: 0 4rpx 16rpx rgba(54, 57, 59, 0.10);
   pointer-events: auto;
 }
 
@@ -569,22 +569,22 @@ onShow(() => {
 
 .chip-tag {
   font-size: 20rpx;
-  color: #980000;
-  background-color: #ffdece;
+  color: #36393B;
+  background-color: #F5F5F5;
   border-radius: 8rpx;
   padding: 2rpx 10rpx;
 }
 
 .chip-arrow {
   font-size: 24rpx;
-  color: #73675a;
+  color: #6B6F73;
 }
 
 .picker-mask {
   position: absolute;
   inset: 0;
   z-index: 20;
-  background-color: rgba(0, 0, 0, 0.35);
+  background-color: rgba(55, 41, 26, 0.35);
 }
 
 .picker-sheet {
@@ -593,7 +593,7 @@ onShow(() => {
   right: 0;
   bottom: 0;
   z-index: 21;
-  background-color: #fefcf9;
+  background-color: #FEF9FF;
   border-radius: 24rpx 24rpx 0 0;
   padding: 32rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
 }
@@ -613,7 +613,7 @@ onShow(() => {
 
 .sheet-close {
   font-size: 32rpx;
-  color: #73675a;
+  color: #6B6F73;
   padding: 4rpx 12rpx;
 }
 
@@ -629,7 +629,7 @@ onShow(() => {
   gap: 24rpx;
   padding: 40rpx 36rpx;
   border-radius: 24rpx;
-  background-color: #f5efe5;
+  background-color: #F5F5F5;
   margin-bottom: 32rpx;
 
   &:last-child {
@@ -637,7 +637,7 @@ onShow(() => {
   }
 
   &.active {
-    background-color: #fde0d2;
+    background-color: #E5E5E5;
   }
 }
 
@@ -650,7 +650,7 @@ onShow(() => {
 }
 
 .picker-check {
-  color: #fd355a;
+  color: #36393B;
   font-size: 32rpx;
   font-weight: 700;
 }
@@ -659,11 +659,11 @@ onShow(() => {
   align-self: flex-start;
   display: flex;
   gap: 20rpx;
-  background-color: rgba(254, 252, 249, 0.95);
-  border: 1rpx solid #ead8cf;
+  background-color: rgba(255, 255, 255, 0.95);
+  border: 1rpx solid #E5E5E5;
   border-radius: 999rpx;
   padding: 8rpx 20rpx;
-  box-shadow: 0 4rpx 16rpx rgba(55, 41, 26, 0.08);
+  box-shadow: 0 4rpx 16rpx rgba(54, 57, 59, 0.10);
 }
 
 .legend-item {
@@ -698,10 +698,10 @@ onShow(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  background-color: rgba(254, 252, 249, 0.95);
-  border: 1rpx solid #ead8cf;
+  background-color: rgba(255, 255, 255, 0.95);
+  border: 1rpx solid #E5E5E5;
   border-radius: 16rpx;
-  box-shadow: 0 4rpx 16rpx rgba(55, 41, 26, 0.08);
+  box-shadow: 0 4rpx 16rpx rgba(54, 57, 59, 0.10);
   overflow: hidden;
 }
 
@@ -722,7 +722,7 @@ onShow(() => {
 .zoom-divider {
   width: 40rpx;
   height: 1rpx;
-  background-color: #ead8cf;
+  background-color: #E5E5E5;
 }
 
 .fab {
@@ -752,12 +752,12 @@ onShow(() => {
   position: absolute;
   left: 20rpx;
   bottom: calc(40rpx + env(safe-area-inset-bottom));
-  background-color: rgba(254, 252, 249, 0.95);
-  border: 1rpx solid #ead8cf;
+  background-color: rgba(255, 255, 255, 0.95);
+  border: 1rpx solid #E5E5E5;
   border-radius: 999rpx;
   padding: 10rpx 20rpx;
   font-size: 22rpx;
-  color: #73675a;
+  color: #6B6F73;
 }
 
 .detail-sheet {
@@ -765,10 +765,10 @@ onShow(() => {
   left: 16rpx;
   right: 16rpx;
   bottom: calc(24rpx + env(safe-area-inset-bottom));
-  background-color: #fefcf9;
+  background-color: #FEF9FF;
   border-radius: 20rpx;
   padding: 24rpx;
-  box-shadow: 0 8rpx 32rpx rgba(55, 41, 26, 0.18);
+  box-shadow: 0 8rpx 32rpx rgba(54, 57, 59, 0.18);
   display: flex;
   flex-direction: column;
   gap: 10rpx;
@@ -789,15 +789,15 @@ onShow(() => {
 
 .cat-tag {
   font-size: 20rpx;
-  color: #980000;
-  background-color: #ffebec;
+  color: #36393B;
+  background-color: #F5F5F5;
   border-radius: 8rpx;
   padding: 4rpx 12rpx;
 }
 
 .close {
   font-size: 28rpx;
-  color: #73675a;
+  color: #6B6F73;
   padding: 4rpx 8rpx;
 }
 
@@ -809,8 +809,8 @@ onShow(() => {
 
 .detail-remark {
   font-size: 24rpx;
-  color: #73675a;
-  background-color: #f8efe7;
+  color: #6B6F73;
+  background-color: #F5F5F5;
   padding: 6rpx 12rpx;
   border-radius: 8rpx;
   line-height: 1.5;
@@ -833,7 +833,7 @@ onShow(() => {
 
 .detail-creator {
   font-size: 22rpx;
-  color: #980000;
+  color: #36393B;
 }
 
 .nav-btn {
@@ -841,8 +841,8 @@ onShow(() => {
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  background-color: #fd355a;
-  color: #fff;
+  background-color: #36393B;
+  color: #FFFFFF;
   border: none;
   border-radius: 12rpx;
   font-size: 24rpx;
@@ -859,7 +859,7 @@ onShow(() => {
 .nearby-mask {
   position: absolute;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.35);
+  background-color: rgba(55, 41, 26, 0.35);
   z-index: 10;
 }
 
@@ -869,7 +869,7 @@ onShow(() => {
   right: 0;
   bottom: 0;
   height: 60vh;
-  background-color: #fefcf9;
+  background-color: #FEF9FF;
   border-radius: 24rpx 24rpx 0 0;
   padding: 24rpx;
   display: flex;
@@ -896,7 +896,7 @@ onShow(() => {
   align-items: center;
   justify-content: center;
   gap: 20rpx;
-  color: #73675a;
+  color: #6B6F73;
 }
 
 .nearby-list {
@@ -908,15 +908,15 @@ onShow(() => {
   gap: 20rpx;
   align-items: center;
   padding: 20rpx 0;
-  border-bottom: 1rpx solid #f0e6dc;
+  border-bottom: 1rpx solid #E5E5E5;
 }
 
 .rank {
   width: 40rpx;
   height: 40rpx;
   border-radius: 50%;
-  background-color: #fd355a;
-  color: #fff;
+  background-color: #36393B;
+  color: #FFFFFF;
   text-align: center;
   line-height: 40rpx;
   font-size: 22rpx;
@@ -937,6 +937,6 @@ onShow(() => {
 
 .nearby-distance {
   font-size: 22rpx;
-  color: #73675a;
+  color: #6B6F73;
 }
 </style>

@@ -33,15 +33,15 @@
     }
   ],
   "globalStyle": {
-    "navigationBarTextStyle": "white",
+    "navigationBarTextStyle": "black",
     "navigationBarTitleText": "橙子吃吃",
-    "navigationBarBackgroundColor": "#f5a7a2",
+    "navigationBarBackgroundColor": "#FFFFFF",
     "backgroundColor": "#efe9d9"
   },
   "tabBar": {
-    "color": "#73675a",
-    "selectedColor": "#fd355a",
-    "backgroundColor": "#f5a7a2",
+    "color": "#6B6F73",
+    "selectedColor": "#36393B",
+    "backgroundColor": "#FFFFFF",
     "borderStyle": "white",
     "list": [
       {

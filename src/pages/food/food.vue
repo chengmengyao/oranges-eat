@@ -260,7 +260,7 @@ function confirmDelete(s: ShopView) {
     title: '删除店铺',
     content: `确认删除「${s.name}」？`,
     confirmText: '删除',
-    confirmColor: '#b42318',
+    confirmColor: '#36393B',
     success: async (res) => {
       if (!res.confirm) return
       deletingId.value = s.id
@@ -404,8 +404,8 @@ onReachBottom(() => {
 
 .group-tag {
   font-size: 22rpx;
-  color: #980000;
-  background-color: #ffdece;
+  color: #36393B;
+  background-color: #F5F5F5;
   border-radius: 8rpx;
   padding: 4rpx 12rpx;
 }
@@ -416,7 +416,7 @@ onReachBottom(() => {
   align-items: center;
   gap: 20rpx;
   padding: 48rpx 32rpx;
-  color: #73675a;
+  color: #6B6F73;
 
   button {
     height: 56rpx;
@@ -435,8 +435,8 @@ onReachBottom(() => {
 }
 
 .shop-card {
-  background-color: #fefcf9;
-  border: 1rpx solid #ead8cf;
+  background-color: #FEF9FF;
+  border: 1rpx solid #E5E5E5;
   border-radius: 24rpx;
   padding: 32rpx 28rpx;
 }
@@ -456,8 +456,8 @@ onReachBottom(() => {
 
 .cat-tag {
   font-size: 22rpx;
-  color: #980000;
-  background-color: #ffebec;
+  color: #36393B;
+  background-color: #F5F5F5;
   border-radius: 8rpx;
   padding: 4rpx 12rpx;
 }
@@ -466,7 +466,7 @@ onReachBottom(() => {
   display: block;
   margin-top: 16rpx;
   font-size: 28rpx;
-  color: #73675a;
+  color: #6B6F73;
   line-height: 1.5;
 }
 
@@ -519,14 +519,14 @@ onReachBottom(() => {
   }
 
   &.edit {
-    background-color: #ffdece;
-    color: #980000;
+    background-color: #F5F5F5;
+    color: #36393B;
   }
 
   &.del {
-    background-color: #fff;
-    color: #b42318;
-    border: 1rpx solid #b42318;
+    background-color: #FFFFFF;
+    color: #36393B;
+    border: 1rpx solid #36393B;
   }
 }
 
@@ -537,7 +537,7 @@ onReachBottom(() => {
 
 .muted {
   font-size: 24rpx;
-  color: #73675a;
+  color: #6B6F73;
 }
 
 .btn-primary,
@@ -554,13 +554,13 @@ onReachBottom(() => {
 }
 
 .btn-primary {
-  background-color: #fd355a;
-  color: #fff;
+  background-color: #36393B;
+  color: #FFFFFF;
 }
 
 .btn-plain {
-  background-color: #ffdece;
-  color: #980000;
+  background-color: #F5F5F5;
+  color: #36393B;
 }
 
 .fab {
@@ -570,13 +570,13 @@ onReachBottom(() => {
   width: 96rpx;
   height: 96rpx;
   border-radius: 50%;
-  background-color: #fd355a;
-  color: #fff;
+  background-color: #36393B;
+  color: #FFFFFF;
   font-size: 48rpx;
   line-height: 96rpx;
   text-align: center;
   padding: 0;
-  box-shadow: 0 8rpx 24rpx rgba(152, 0, 0, 0.3);
+  box-shadow: 0 8rpx 24rpx rgba(54, 57, 59, 0.30);
   border: none;
 
   &::after {
@@ -589,8 +589,8 @@ onReachBottom(() => {
   left: 24rpx;
   right: 24rpx;
   bottom: calc(24rpx + env(safe-area-inset-bottom));
-  background-color: #ffebec;
-  color: #980000;
+  background-color: #F5F5F5;
+  color: #36393B;
   font-size: 24rpx;
   border-radius: 16rpx;
   padding: 16rpx;
@@ -613,7 +613,7 @@ onReachBottom(() => {
 
 .form-hint {
   font-size: 22rpx;
-  color: #73675a;
+  color: #6B6F73;
   line-height: 1.4;
   margin-top: -16rpx;
 }
@@ -622,8 +622,8 @@ onReachBottom(() => {
   width: 100%;
   box-sizing: border-box;
   border-radius: 16rpx;
-  background-color: #fff;
-  border: 1rpx solid #f5a7a2;
+  background-color: #FFFFFF;
+  border: 1rpx solid #36393B;
   font-size: 28rpx;
   padding: 0 20rpx;
   height: 96rpx;
@@ -635,8 +635,8 @@ onReachBottom(() => {
   width: 100%;
   box-sizing: border-box;
   border-radius: 16rpx;
-  background-color: #fff;
-  border: 1rpx solid #f5a7a2;
+  background-color: #FFFFFF;
+  border: 1rpx solid #36393B;
   font-size: 28rpx;
   padding: 20rpx;
   height: 200rpx;
@@ -661,8 +661,8 @@ onReachBottom(() => {
   line-height: 94rpx;
   padding: 0 20rpx;
   border-radius: 16rpx;
-  background-color: #fff;
-  border: 1rpx solid #f5a7a2;
+  background-color: #FFFFFF;
+  border: 1rpx solid #36393B;
   font-size: 26rpx;
   color: #37291a;
   overflow: hidden;
@@ -670,7 +670,7 @@ onReachBottom(() => {
   text-overflow: ellipsis;
 
   &.empty {
-    color: #73675a;
+    color: #6B6F73;
   }
 }
 
@@ -684,7 +684,7 @@ onReachBottom(() => {
 }
 
 .error {
-  color: #b42318;
+  color: #36393B;
   font-size: 24rpx;
 }
 
