@@ -9,6 +9,7 @@
     "clean:mp-weixin": "node scripts/clean-mp-weixin.mjs",
     "build:mp-weixin": "uni build -p mp-weixin && node scripts/sync-cloudfunctions.mjs && node scripts/install-cloudfunction-deps.mjs",
     "rebuild:mp-weixin": "npm run clean:mp-weixin && npm run build:mp-weixin",
+    "rebuild:reload": "node scripts/rebuild-and-reload.mjs",
     "build:mp-weixin:cloud-install": "uni build -p mp-weixin && node scripts/sync-cloudfunctions.mjs",
     "type-check": "vue-tsc --noEmit",
     "test": "vitest run",

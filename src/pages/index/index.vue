@@ -424,12 +424,10 @@ onShow(() => {
 
     <view class="fab-group">
       <view class="fab" @click="onGetLocation">
-        <image class="fab-icon" src="/static/tabbar/位置.png" mode="aspectFit" />
-        <text class="fab-text">获取位置</text>
+        <image class="fab-icon fab-icon-location" src="/static/tabbar/位置.png" mode="aspectFit" />
       </view>
       <view class="fab" @click="openNearby">
         <image class="fab-icon" src="/static/tabbar/离我最近.png" mode="aspectFit" />
-        <text class="fab-text">离我最近</text>
       </view>
     </view>
 
@@ -744,26 +742,26 @@ onShow(() => {
 }
 
 .fab {
-  width: 104rpx;
-  height: 104rpx;
-  border-radius: 0;
-  background-color: transparent;
-  color: #37291a;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 16rpx;
+  background-color: #FFFFFF;
+  border: 1rpx solid #E5E5E5;
+  box-shadow: 0 4rpx 16rpx rgba(54, 57, 59, 0.10);
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4rpx;
-  font-size: 28rpx;
+  padding: 0;
 }
 
 .fab-icon {
-  width: 56rpx;
-  height: 56rpx;
+  width: 48rpx;
+  height: 48rpx;
 }
 
-.fab-text {
-  font-size: 22rpx;
+.fab-icon-location {
+  width: 36rpx;
+  height: 36rpx;
 }
 
 .location-status {
