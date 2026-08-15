@@ -7,13 +7,38 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
 
 const root = resolve(process.cwd())
 const outputDir = resolve(root, 'dist', 'build', 'mp-weixin')
 const projectDir = outputDir
 const cliPath = '/Applications/wechatwebdevtools.app/Contents/MacOS/cli'
+const privateConfigPath = resolve(outputDir, 'project.private.config.json')
+let privateConfigContent = ''
+
+function normalizePrivateConfig(content) {
+  try {
+    const config = JSON.parse(content)
+    const conditions = config.condition?.miniprogram?.list
+    if (Array.isArray(conditions)) {
+      for (const condition of conditions) {
+        if (typeof condition.query !== 'string') continue
+        condition.query = condition.query
+          .split('&')
+          .map((part) => {
+            if (!part.startsWith('scene=c=')) return part
+            return `scene=${encodeURIComponent(part.slice('scene='.length))}`
+          })
+          .join('&')
+      }
+    }
+    return `${JSON.stringify(config, null, 2)}\n`
+  } catch {
+    console.warn('[rebuild-and-reload] 私有调试配置无法解析，将按原样保留')
+    return content
+  }
+}
 
 function run(label, command, args) {
   console.log(`\n${'='.repeat(60)}\n${label}\n${'='.repeat(60)}`)
@@ -46,6 +71,10 @@ function step1Close() {
 }
 
 function step2Clean() {
+  if (existsSync(privateConfigPath)) {
+    privateConfigContent = normalizePrivateConfig(readFileSync(privateConfigPath, 'utf8'))
+    console.log('[2/4] 已暂存并规范化 IDE 私有调试配置')
+  }
   if (existsSync(outputDir)) {
     console.log(`\n[2/4] 清理旧产物：${outputDir}`)
     rmSync(outputDir, { recursive: true, force: true })
@@ -56,6 +85,10 @@ function step2Clean() {
 
 function step3Build() {
   run('[3/4] 重新编译', 'npm', ['run', 'build:mp-weixin'])
+  if (privateConfigContent) {
+    writeFileSync(privateConfigPath, privateConfigContent)
+    console.log('[3/4] 已恢复 IDE 私有调试配置')
+  }
   const appJson = resolve(outputDir, 'app.json')
   const projectConfig = resolve(outputDir, 'project.config.json')
   if (!existsSync(appJson) || !existsSync(projectConfig)) {

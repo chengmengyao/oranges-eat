@@ -122,14 +122,7 @@ onLoad((query) => {
     <template v-else-if="preview">
       <view class="invite-content">
         <view class="hero-visual">
-          <view class="buddy buddy-left">
-            <image src="/static/tabbar/调皮.png" mode="aspectFit" />
-          </view>
-          <view class="spark spark-one">✦</view>
-          <view class="spark spark-two">●</view>
-          <view class="buddy buddy-right">
-            <image src="/static/tabbar/惊讶.png" mode="aspectFit" />
-          </view>
+          <image class="hero-image" src="/static/tabbar/眨眼.jpg" mode="aspectFit" />
         </view>
 
         <text class="eyebrow">共享美食地图</text>
@@ -238,34 +231,15 @@ onLoad((query) => {
   width: 380rpx;
   height: 236rpx;
   margin: 10rpx auto 4rpx;
-}
-
-.buddy {
-  position: absolute;
-  bottom: 12rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 190rpx;
-  height: 190rpx;
-  border-radius: 50%;
-  background-color: $card-bg;
-  box-shadow: 0 18rpx 46rpx rgba(55, 41, 26, 0.12);
-
-  image {
-    width: 170rpx;
-    height: 170rpx;
-  }
 }
 
-.buddy-left {
-  left: 22rpx;
-  transform: rotate(-8deg);
-}
-
-.buddy-right {
-  right: 22rpx;
-  transform: rotate(8deg);
+.hero-image {
+  width: 200rpx;
+  height: 200rpx;
+  border-radius: 32rpx;
 }
 
 .spark {
