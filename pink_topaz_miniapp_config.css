@@ -1,0 +1,65 @@
+
+/* ============================================
+   Pink Topaz 浅色主题 · 小程序配色配置
+   基于 Obsidian Pink Topaz 主题提取
+   作者: Mouth (嘴上云) | 原主题: WhyI (Blue Topaz)
+   ============================================ */
+
+/* --- 页面背景 --- */
+--page-bg: #efe9d9;           /* 主页面背景 - 暖米色/奶油色 */
+--card-bg: #fefcf9;           /* 卡片/浮层背景 - 近白色 */
+--section-bg: #ffdece;        /* 区块背景 - 浅桃色 */
+
+/* --- 文字颜色 --- */
+--text-primary: #37291a;      /* 主文字 - 深棕色（不用纯黑，更柔和） */
+--text-secondary: #37291a;    /* 次要文字 - 同主文字，可用透明度区分 */
+--text-accent: #980000;       /* 强调文字 - 深红色 */
+--text-link: #980000;         /* 链接文字 */
+
+/* --- 粉色核心（主题色）--- */
+--pink-primary: #f5a7a2;      /* 主题粉 - 用于导航栏、标签栏背景 */
+--pink-bright: #fd355a;       /* 亮粉 - 用于主按钮、高亮、指示条 */
+--pink-coral: #f39ba0;        /* 珊瑚粉 - 用于标题、hover状态 */
+--pink-peach: #ffdece;        /* 浅桃 - 用于次级背景、hover背景 */
+--pink-light: #ffebec;        /* 淡粉 - 用于提示区域、搜索框背景 */
+--pink-dark: #980000;         /* 深红 - 用于强调文字、图标 */
+
+/* --- 辅助色（标签/分类） --- */
+--tag-beige: #e5c7a9;         /* 米色标签 */
+--tag-pink: #fea2c2;          /* 浅粉标签 */
+--tag-blue: #69a2ee;          /* 柔和蓝 */
+--tag-green: #40916c;         /* 柔和绿 */
+--tag-brown: #c47a5e;         /* 柔和棕 */
+--tag-gold: #dbb671;          /* 柔和金 */
+--tag-orange: #f19c79;        /* 柔和橙 */
+--tag-purple: #8673b4;        /* 柔和紫 */
+--tag-cyan: #4dd8ef;          /* 柔和青 */
+--tag-yellow: #ffc727;        /* 柔和黄 */
+
+/* --- 状态色 --- */
+--success: #40916c;           /* 成功 - 绿 */
+--warning: #ffc727;           /* 警告 - 黄 */
+--error: #fd355a;             /* 错误 - 亮粉 */
+--info: #69a2ee;              /* 信息 - 蓝 */
+
+/* --- 边框与分割线 --- */
+--border-light: #f5a7a2;      /* 浅色边框 */
+--border-medium: #fd355a;     /* 中等边框 */
+--divider: rgba(0,0,0,0.1);  /* 分割线 */
+
+/* ============================================
+   使用建议
+   ============================================ */
+
+/* 
+1. 页面背景用 --page-bg (#efe9d9)，不要用纯白，这是这个主题的灵魂
+2. 卡片用 --card-bg (#fefcf9) + --border-light 边框，营造层次感
+3. 主按钮用 --pink-bright (#fd355a) 背景 + 白色文字
+4. 次按钮用 --pink-peach (#ffdece) 背景 + --text-accent 文字
+5. 导航栏/标签栏用 --pink-primary (#f5a7a2) 背景 + 深棕文字
+6. 选中态用 --pink-bright 做指示条或背景
+7. 标签系统用辅助色系列，低饱和很和谐
+8. 文字全部用 --text-primary (#37291a)，不用纯黑 #000000
+9. 高亮/提示区域用 --pink-light (#ffebec) 背景 + --text-accent 文字
+10. 列表项左侧指示条用 --pink-bright，hover 背景用 --pink-peach
+*/

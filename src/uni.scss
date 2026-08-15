@@ -1,0 +1,5 @@
+/**
+ * uni.scss：uni-app 编译期 SCSS 变量（自动注入每个组件的样式）。
+ * 业务主题变量统一维护在 src/styles/theme.scss，这里仅做引入，避免两套变量重复维护。
+ */
+@use '@/styles/theme.scss' as *;

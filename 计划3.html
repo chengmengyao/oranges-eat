@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>「橙子吃吃」微信小程序项目计划 v3</title>
+  <style>
+    :root {
+      --page-bg: #efe9d9;
+      --card-bg: #fefcf9;
+      --pink-soft: #f5a7a2;
+      --pink-primary: #fd355a;
+      --pink-dark: #980000;
+      --brown: #37291a;
+      --muted: #73675a;
+      --border: #ead8cf;
+      --green: #287a50;
+      --amber: #9a5c00;
+      --red: #b42318;
+      --blue: #265d97;
+      --shadow: 0 8px 24px rgba(55, 41, 26, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--brown);
+      background:
+        radial-gradient(circle at 10% 0%, rgba(245, 167, 162, 0.35), transparent 28rem),
+        var(--page-bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      line-height: 1.72;
+    }
+
+    .page {
+      width: min(1080px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 72px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 24px;
+      padding: 40px;
+      border: 1px solid rgba(152, 0, 0, 0.1);
+      border-radius: 24px;
+      background: linear-gradient(135deg, #f8b9b3 0%, #f5a7a2 48%, #ffcad1 100%);
+      box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+      position: absolute;
+      right: -25px;
+      bottom: -78px;
+      content: "🍊";
+      font-size: 180px;
+      opacity: 0.18;
+      transform: rotate(-12deg);
+    }
+
+    h1, h2, h3, h4 { line-height: 1.35; }
+
+    h1 {
+      position: relative;
+      z-index: 1;
+      margin: 0 0 8px;
+      color: var(--brown);
+      font-size: clamp(28px, 5vw, 44px);
+    }
+
+    .hero p {
+      position: relative;
+      z-index: 1;
+      margin: 0;
+      font-size: 17px;
+      font-weight: 600;
+    }
+
+    .badges {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .badge, .tag {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .badge { background: rgba(255, 255, 255, 0.72); }
+    .tag-p0 { color: #fff; background: var(--red); }
+    .tag-p1 { color: #fff; background: var(--amber); }
+    .tag-ok { color: #fff; background: var(--green); }
+    .tag-info { color: #fff; background: var(--blue); }
+
+    h2 {
+      margin: 36px 0 14px;
+      padding-left: 13px;
+      border-left: 5px solid var(--pink-primary);
+      font-size: 25px;
+    }
+
+    h3 {
+      margin: 26px 0 10px;
+      color: var(--pink-dark);
+      font-size: 19px;
+    }
+
+    h4 { margin-bottom: 8px; font-size: 16px; }
+
+    .card {
+      margin: 12px 0;
+      padding: 22px 24px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--card-bg);
+      box-shadow: 0 3px 12px rgba(55, 41, 26, 0.04);
+    }
+
+    .callout {
+      margin: 14px 0;
+      padding: 14px 16px;
+      border-left: 4px solid var(--pink-primary);
+      border-radius: 10px;
+      background: #fff3f4;
+    }
+
+    .callout.warn {
+      border-left-color: var(--amber);
+      background: #fff7e8;
+    }
+
+    .callout.safe {
+      border-left-color: var(--green);
+      background: #edf8f1;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      border-spacing: 0;
+    }
+
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--pink-dark);
+      background: #fff4f3;
+      font-weight: 700;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    code {
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: #7a1530;
+      background: #f8ecee;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+      word-break: break-word;
+    }
+
+    pre, .tree {
+      overflow-x: auto;
+      margin: 12px 0;
+      padding: 18px;
+      border: 1px solid #dac9be;
+      border-radius: 12px;
+      color: #2f271f;
+      background: #f7f2e9;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      line-height: 1.65;
+      white-space: pre;
+    }
+
+    ul, ol { padding-left: 24px; }
+    li + li { margin-top: 7px; }
+    .muted { color: var(--muted); }
+    .nowrap { white-space: nowrap; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .checklist { list-style: none; padding-left: 0; }
+    .checklist li { position: relative; padding-left: 28px; }
+    .checklist li::before {
+      position: absolute;
+      left: 0;
+      content: "□";
+      color: var(--pink-primary);
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    footer {
+      margin-top: 42px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 13px;
+    }
+
+    @media (max-width: 720px) {
+      .page { width: min(100% - 20px, 1080px); padding-top: 10px; }
+      .hero { padding: 26px 22px; border-radius: 18px; }
+      .card { padding: 17px 15px; }
+      .grid { grid-template-columns: 1fr; }
+      th, td { padding: 10px 8px; font-size: 14px; }
+      table { display: block; overflow-x: auto; }
+    }
+
+    @media print {
+      body { background: #fff; }
+      .page { width: 100%; padding: 0; }
+      .hero, .card { box-shadow: none; break-inside: avoid; }
+      h2, h3 { break-after: avoid; }
+    }
+  </style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <h1>🍊「橙子吃吃」微信小程序 · 项目计划 v3</h1>
+    <p>面向编码 AI 的完整执行规格：可邀请朋友共同添加店铺的共享美食地图 MVP</p>
+    <div class="badges">
+      <span class="badge">uni-app</span>
+      <span class="badge">Vue 3 + TypeScript</span>
+      <span class="badge">Wot UI v2</span>
+      <span class="badge">微信云开发</span>
+      <span class="badge">地图 / 美食 / 管理</span>
+      <span class="badge">访客公开可看</span>
+      <span class="badge">好友邀请加入</span>
+      <span class="badge">多人共同添加</span>
+      <span class="badge">真机验收</span>
+    </div>
+  </header>
+
+  <h2>0. 给编码 AI 的执行指令</h2>
+  <section class="card">
+    <div class="callout safe">
+      <strong>执行目标：</strong>严格按照本计划，在
+      <code>/Users/chengmengyao/iWork/oranges-eat2</code>
+      内完成一个可构建、可导入微信开发者工具、可真机验收的微信小程序 MVP。
+    </div>
+    <ol>
+      <li>开始前先检查当前目录、已有素材、Git 状态和已有代码；保留 <code>svg/</code>、<code>pink_topaz_miniapp_config.css</code>、所有 <code>计划*.html</code>，不要清空目录。</li>
+      <li>若项目尚未初始化，在系统临时目录拉取官方 <code>vite-ts</code> 模板，再把项目文件安全合入目标目录；禁止用会覆盖现有素材和计划文档的粗暴命令。</li>
+      <li>依次执行 M0～M7。每完成一个里程碑就运行该阶段验证；发现错误要修复后再继续，不得用关闭类型检查、忽略错误或删除测试的方式绕过。</li>
+      <li>正式 AppID、云环境 ID、隐私指引或接口权限缺失时，继续完成不依赖外部配置的代码与构建，并把真机阻塞项明确列在最终交付中；不要编造“真机已通过”。</li>
+      <li>分享与好友协作是本项目最高优先级，不得删减；除本计划明确的邀请加入、成员权限和共享店铺外，不增加推荐、评论、图片上传、手机号账号系统、自建后端等功能，也不做无关重构。</li>
+      <li>不要把任何真实密钥、AppSecret、访问令牌写入源码、HTML、日志或 Git。MVP 不需要腾讯位置服务 Key。旧计划中曾出现过的 Key 必须先由橙子酱在腾讯位置服务控制台重置或删除，再由编码 AI 将旧文档中的值脱敏为 <code>[REDACTED]</code>；不得复制或继续使用旧值。</li>
+      <li>最终必须报告：完成内容、关键文件、执行过的验证及结果、仍需橙子酱在微信后台完成的操作、已知限制。</li>
+    </ol>
+  </section>
+
+  <h2>1. 产品定义与边界</h2>
+  <section class="card">
+    <table>
+      <tbody>
+      <tr><th>项目名称</th><td>橙子吃吃</td></tr>
+      <tr><th>产品定位</th><td>朋友之间共同维护的共享美食地图；创建者建立一个共享清单，通过微信转发邀请朋友加入，成员都能查看并添加想吃或喜欢的店。</td></tr>
+      <tr><th>目标用户</th><td>橙子酱、加入清单共同维护的朋友，以及通过分享链接只读浏览的访客。访客无需加入即可看地图和全部店铺，但不能新增、编辑或删除。</td></tr>
+      <tr><th>核心价值</th><td>把分散在聊天里的餐厅推荐沉淀为朋友共同维护的地图，聚会前能快速找到大家收藏且离当前位置最近的店。</td></tr>
+      <tr><th>MVP 成功标准</th><td>创建者能“创建清单 → 微信分享 → 朋友确认加入”；任一成员能“地图选点新增 → 全员同步看到 → 分类浏览 → 找最近 → 导航”；成员只能编辑/删除自己添加的店，创建者可以管理全部。</td></tr>
+      <tr><th>数据性质</th><td>共享清单是“链接可见、成员可写”：拿到公开清单链接的人均可只读查看全部店铺；加入后的成员才能贡献内容。成员列表、OpenID、邀请信息仍不公开。</td></tr>
+      </tbody>
+    </table>
+
+    <h3>MVP 范围</h3>
+    <div class="grid">
+      <div class="callout safe">
+        <strong>必须实现</strong>
+        <ul>
+          <li>创建共享清单、清单选择与微信分享</li>
+          <li>底部地图 / 美食 / 管理三个 Tab</li>
+          <li>分享后无需加入即可只读查看地图与全部店铺</li>
+          <li>邀请链接校验、朋友确认加入后贡献内容</li>
+          <li>地图页与美食列表页</li>
+          <li>饭店、蛋糕店、奶茶店三类</li>
+          <li>地图选点与店铺 CRUD</li>
+          <li>定位、直线距离排序、导航</li>
+          <li>成员权限、清单隔离、分页、异常态</li>
+          <li>Pink Topaz 基础主题</li>
+        </ul>
+      </div>
+      <div class="callout warn">
+        <strong>本期不做</strong>
+        <ul>
+          <li>跨全部清单的公开广场、搜索和排行榜</li>
+          <li>AI 推荐、附近店铺搜索、逆地址解析</li>
+          <li>路线距离、步行或驾车时间计算</li>
+          <li>图片上传、评分、评论、打卡、朋友圈海报</li>
+          <li>用户资料页、手机号登录、会员系统</li>
+          <li>腾讯位置服务 Key 与外部地图 Web API</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <h2>2. 已确认的技术决策</h2>
+  <section class="card">
+    <table>
+      <tbody>
+      <tr><th>目标平台</th><td>微信小程序；其他 uni-app 平台只保证不因平台专属代码导致基础构建失败，不作为本期验收目标。</td></tr>
+      <tr><th>工程模板</th><td><code>dcloudio/uni-preset-vue#vite-ts</code>，Vue 3 + TypeScript + Vite。</td></tr>
+      <tr><th>组件库</th><td><code>@wot-ui/ui@2.3.2</code>，使用 npm 安装并精确锁定版本，提交 <code>package-lock.json</code>。</td></tr>
+      <tr><th>样式</th><td>SCSS；只维护一份业务主题入口 <code>src/styles/theme.scss</code>。<code>src/uni.scss</code> 仅放 uni-app 编译期需要的变量，避免两套变量重复维护。</td></tr>
+      <tr><th>数据存储</th><td>微信云开发数据库 <code>groups</code>、<code>members</code>、<code>invites</code>、<code>shops</code> 四个集合，全部设为“仅管理端可读写”；小程序只能通过云函数访问。</td></tr>
+      <tr><th>服务端</th><td>使用微信云函数实现邀请、加入、成员校验和共享店铺 CRUD；每次调用都从 <code>cloud.getWXContext().OPENID</code> 获取真实身份，绝不信任客户端传入的用户身份或角色。</td></tr>
+      <tr><th>分享</th><td>使用 <code>onShareAppMessage</code> 分享公开清单标识与限时邀请 token；朋友打开后可直接只读浏览，确认加入后获得添加店铺权限。</td></tr>
+      <tr><th>地图</th><td>微信原生 <code>&lt;map&gt;</code>；用 <code>wx.chooseLocation</code> 选点、<code>wx.getLocation</code> 定位、<code>wx.openLocation</code> 导航。</td></tr>
+      <tr><th>距离</th><td>Haversine 公式计算两点之间的直线距离；界面必须写“直线距离”，不得描述成路线距离。</td></tr>
+      <tr><th>图标</th><td>复用现有地图、美食和三类店铺素材；为新增“管理”Tab 创建同风格的简洁管理图标，并通过 <code>sharp</code> 开发脚本统一生成微信支持的 PNG。</td></tr>
+      <tr><th>测试</th><td>纯函数使用 Vitest；工程执行 TypeScript 检查和微信小程序生产构建；平台能力使用开发者工具及真机验收。</td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      依赖安装建议：<code>npm install --save-exact @wot-ui/ui@2.3.2</code>，并安装与官方模板兼容的
+      <code>sass</code>、<code>vue-tsc</code>、<code>vitest</code>、<code>sharp</code>。除已明确的 Wot UI 版本外，其余依赖优先沿用模板给出的兼容版本，不盲目升级整套 uni-app 依赖。
+    </div>
+  </section>
+
+  <h2>3. 外部前置准备</h2>
+  <section class="card">
+    <p>这些操作涉及微信后台，编码 AI 应能识别缺失项并降级完成代码，但最终真机闭环需要橙子酱完成：</p>
+    <ol class="checklist">
+      <li>准备正式微信小程序 AppID；测试号不能替代云开发与完整定位权限验收。</li>
+      <li>在微信开发者工具中开通云开发环境，取得云环境 ID。</li>
+      <li>创建 <code>groups</code>、<code>members</code>、<code>invites</code>、<code>shops</code> 四个集合，全部设置为<strong>“仅管理端可读写”</strong>，禁止小程序端直接读写。</li>
+      <li>创建并部署 <code>groupApi</code>、<code>shopApi</code> 云函数，安装云端依赖并确认云函数环境与小程序云环境一致。</li>
+      <li>在小程序后台申请并开通 <code>getLocation</code>、<code>chooseLocation</code> 所需接口权限。</li>
+      <li>配置“用户隐私保护指引”，准确说明位置信息用于显示当前位置、计算收藏店铺直线距离和地图选点。</li>
+      <li>用至少三个不同微信账号：A 创建并分享，B 加入并添加，C 不加入但能看到所有店铺且所有写操作都被拒绝。</li>
+      <li>体验版只能分享给已配置的体验成员；若希望普通朋友直接打开，必须完成小程序审核和正式发布。</li>
+    </ol>
+    <div class="callout warn">
+      <strong>配置约束：</strong><code>src/config/env.ts</code> 只允许保存可公开的
+      <code>CLOUD_ENV_ID</code> 配置；不要创建 <code>TENCENT_MAP_KEY</code>，不要保存 AppSecret。若希望避免将环境 ID 固化，可提供示例文件与本地覆盖机制，但必须确保构建行为清晰。
+    </div>
+  </section>
+
+  <h2>4. 现有素材与目标工程结构</h2>
+  <section class="card">
+    <h3>现有素材映射</h3>
+    <table>
+      <tbody>
+      <tr><th>现有文件</th><th>目标文件</th><th>用途</th></tr>
+      <tr><td><code>svg/地图.png</code></td><td><code>src/static/tabbar/map.png</code></td><td>地图 Tab</td></tr>
+      <tr><td><code>svg/美食.png</code></td><td><code>src/static/tabbar/food.png</code></td><td>美食 Tab</td></tr>
+      <tr><td><code>svg/管理.svg</code>（新增原创素材）</td><td><code>src/static/tabbar/manage.png</code></td><td>管理 Tab；风格、留白和尺寸与另外两个 Tab 图标一致</td></tr>
+      <tr><td><code>svg/肉食.png</code></td><td><code>src/static/markers/restaurant.png</code></td><td>饭店 marker</td></tr>
+      <tr><td><code>svg/甜甜圈.png</code></td><td><code>src/static/markers/cake.png</code></td><td>蛋糕店 marker</td></tr>
+      <tr><td><code>svg/奶茶.png</code></td><td><code>src/static/markers/milktea.png</code></td><td>奶茶店 marker</td></tr>
+      </tbody>
+    </table>
+    <p class="muted">复制时保留原始素材。使用 <code>scripts/gen-icons.mjs</code> 生成 81×81 的三个 tabBar PNG 和合适留白的 marker PNG；不得用 SVG 直接作为 tabBar 或 marker。</p>
+
+    <h3>目标结构</h3>
+    <div class="tree">oranges-eat2/
+├── package.json
+├── package-lock.json
+├── vite.config.ts
+├── tsconfig.json
+├── README.md                           # 配置、运行与验收说明
+├── scripts/
+│   └── gen-icons.mjs                   # SVG → PNG，可重复执行
+├── pink_topaz_miniapp_config.css       # 配色参考，保留
+├── svg/                                # 原始素材，保留
+├── 计划2.html                           # 旧计划，保留
+├── 计划3.html                           # 本执行计划，保留
+├── tests/
+│   ├── geo.test.ts
+│   ├── authorization.test.ts
+│   ├── invite.test.ts
+│   ├── marker.test.ts
+│   └── shop-validation.test.ts
+├── cloudfunctions/
+│   ├── groupApi/                      # 清单、成员、邀请与分享鉴权
+│   │   ├── index.js
+│   │   └── package.json
+│   └── shopApi/                       # 共享店铺查询与 CRUD 鉴权
+│       ├── index.js
+│       └── package.json
+└── src/
+    ├── App.vue
+    ├── main.ts
+    ├── manifest.json                   # AppID / requiredPrivateInfos
+    ├── pages.json                      # 页面 / tabBar / permission
+    ├── uni.scss
+    ├── config/
+    │   └── env.ts                      # 仅 CLOUD_ENV_ID，无地图 Key
+    ├── constants/
+    │   └── shop.ts                     # 分类、分页、单清单容量
+    ├── styles/
+    │   └── theme.scss
+    ├── types/
+    │   ├── group.ts
+    │   └── shop.ts
+    ├── utils/
+    │   ├── cloud.ts                    # 初始化与配置状态
+    │   ├── geo.ts                      # Haversine 与格式化
+    │   ├── location.ts                 # 授权、定位、打开设置
+    │   └── shop-validation.ts          # 表单与坐标校验
+    ├── services/
+    │   ├── group.ts                    # 云函数：清单、成员、邀请
+    │   └── shop.ts                     # 云函数：共享店铺 CRUD 与分页
+    ├── stores/
+    │   └── group.ts                    # 当前清单与切换状态
+    ├── static/
+    │   ├── tabbar/
+    │   │   ├── map.png
+    │   │   ├── food.png
+    │   │   └── manage.png
+    │   └── markers/
+    │       ├── restaurant.png
+    │       ├── cake.png
+    │       └── milktea.png
+    └── pages/
+        ├── invite/
+        │   └── index.vue               # 微信分享邀请落地页
+        ├── index/
+        │   └── index.vue               # 地图页
+        ├── food/
+        │   └── food.vue                # 列表与编辑页
+        └── manage/
+            └── manage.vue              # 管理 Tab：清单、邀请、成员</div>
+  </section>
+
+  <h2>5. 多人共享数据模型、邀请与权限</h2>
+  <section class="card">
+    <h3>5.1 TypeScript 数据契约</h3>
+    <pre>export type MemberRole = 'owner' | 'member'
+export type MemberStatus = 'active' | 'removed'
+export type ShopCategory = 'restaurant' | 'cake' | 'milktea'
+
+export interface Group {
+  _id: string
+  publicId: string               // 随机、稳定、可放在分享路径的公开标识
+  name: string                 // 1～30 字
+  ownerOpenId: string          // 仅服务端保存，禁止返回客户端
+  visibility: 'public_read'    // MVP 固定：任何访客可读，只有成员可写
+  status: 'active'
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface Member {
+  _id: string                  // sha256(`${groupId}:${openId}`)，保证幂等且不暴露身份
+  groupId: string
+  userOpenId: string           // 仅服务端保存，禁止客户端传入
+  displayName: string          // 清单内显示名，1～20 字
+  role: MemberRole
+  status: MemberStatus
+  joinedAt: Date
+  updatedAt: Date
+}
+
+export interface Invite {
+  _id: string
+  groupId: string
+  tokenHash: string            // 数据库只保存 SHA-256 摘要
+  createdByOpenId: string      // 仅服务端写入
+  status: 'active' | 'revoked'
+  expiresAt: Date              // 默认 7 天
+  maxUses: number              // 默认 50
+  usedCount: number
+  createdAt: Date
+}
+
+export interface Shop {
+  _id: string
+  groupId: string
+  name: string
+  category: ShopCategory
+  latitude: number             // GCJ-02
+  longitude: number            // GCJ-02
+  address: string
+  remark?: string
+  createdByOpenId: string      // 仅服务端保存，禁止返回客户端
+  createdByName: string        // 创建时的显示名快照
+  updatedByOpenId: string      // 仅服务端保存
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface ShopView {
+  id: string
+  name: string
+  category: ShopCategory
+  latitude: number
+  longitude: number
+  address: string
+  remark?: string
+  creatorName: string
+  isMine: boolean
+  canEdit: boolean
+  canDelete: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type PublicShopView = Omit&lt;ShopView,
+  'creatorName' | 'isMine' | 'canEdit' | 'canDelete'
+&gt;</pre>
+
+    <h3>5.2 字段、索引与并发规则</h3>
+    <table>
+      <tbody>
+      <tr><th>项目</th><th>规则</th></tr>
+      <tr><td>清单名称</td><td>trim 后 1～30 个字符；创建者可以修改。</td></tr>
+      <tr><td>公开标识</td><td><code>publicId</code> 由服务端生成、全局唯一且不可预测；它不是写权限凭据，只用于访客定位公开清单。</td></tr>
+      <tr><td>成员显示名</td><td>trim 后 1～20 个字符，允许重名；只作为清单内展示，不申请微信头像昵称权限。</td></tr>
+      <tr><td>店铺字段</td><td>名称 1～40、地址 1～120、备注不超过 200；分类限三个枚举；纬度 -90～90、经度 -180～180 且必须为有限数值。</td></tr>
+      <tr><td>位置一致性</td><td>地址和坐标只能由同一次 <code>chooseLocation</code> 成组更新；地址只读，修改位置必须重新选点。</td></tr>
+      <tr><td>清单容量</td><td>MVP 每个共享清单最多 200 家有效店铺，服务端新增时强制校验；这样地图可以展示清单内全部店铺，而不是只显示部分。</td></tr>
+      <tr><td>时间</td><td>全部使用服务端时间；新增同时写 <code>createdAt/updatedAt</code>，编辑只更新白名单字段与 <code>updatedAt</code>。</td></tr>
+      <tr><td>邀请 token</td><td>云函数生成至少 128 位不可预测随机值，分享路径携带明文 token，数据库只保存摘要；默认 7 天、最多 50 次使用，可由创建者撤销。</td></tr>
+      <tr><td>幂等</td><td><code>Member._id = sha256(groupId + ':' + openId)</code>；重复打开邀请或重复加入只返回已有成员。新增店铺携带客户端请求 ID，服务端防止重复写入。</td></tr>
+      <tr><td>索引</td><td><code>groups(publicId)</code> 唯一；<code>members(groupId, userOpenId)</code> 唯一；<code>invites(tokenHash)</code> 唯一；<code>shops(groupId, updatedAt)</code> 支持分页。</td></tr>
+      <tr><td>编辑冲突</td><td>更新时携带 <code>expectedUpdatedAt</code> 做乐观校验；已被他人修改时提示刷新，不能静默覆盖。</td></tr>
+      </tbody>
+    </table>
+
+    <h3>5.3 服务端权限矩阵</h3>
+    <table>
+      <tbody>
+      <tr><th>操作</th><th>创建者</th><th>普通成员</th><th>未加入用户</th></tr>
+      <tr><td>查看清单名称和全部店铺</td><td>允许</td><td>允许</td><td>允许，只读</td></tr>
+      <tr><td>查看成员列表</td><td>允许</td><td>允许</td><td>拒绝</td></tr>
+      <tr><td>新增店铺</td><td>允许</td><td>允许</td><td>拒绝</td></tr>
+      <tr><td>编辑/删除自己的店铺</td><td>允许</td><td>允许</td><td>拒绝</td></tr>
+      <tr><td>编辑/删除他人店铺</td><td>允许</td><td>拒绝</td><td>拒绝</td></tr>
+      <tr><td>生成/撤销邀请</td><td>允许</td><td>拒绝</td><td>拒绝</td></tr>
+      <tr><td>修改清单名称、移除成员</td><td>允许</td><td>拒绝</td><td>拒绝</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout safe">
+      <strong>P0 安全要求：</strong>四个业务集合全部设为“仅管理端可读写”。公开查看也必须通过只读云函数，不能开放数据库客户端读权限。写操作从
+      <code>cloud.getWXContext().OPENID</code> 获取身份，并逐次检查“调用者是否为有效成员、目标资源是否属于该清单、角色是否允许、普通成员是否为店铺创建者”。客户端传入的
+      <code>openId</code>、<code>role</code>、<code>createdBy</code>、<code>canEdit</code> 一律不可信。
+    </div>
+    <ul>
+      <li>创建清单时，必须用事务或幂等补偿同时创建 <code>groups</code> 文档与 owner 成员关系。</li>
+      <li>加入清单必须先校验 token 摘要、有效期、撤销状态、使用次数和清单状态，再幂等创建成员。</li>
+      <li>被移除成员立即失去成员列表、邀请和全部写权限；他此前添加的店铺保留，由创建者继续管理。创建者不能移除自己。</li>
+      <li>“失去读取权限”只指成员列表和管理信息；被移除者仍可像普通访客一样读取公开店铺。</li>
+      <li>访客读取返回 <code>PublicShopView</code>，不包含添加者名称、成员信息和权限字段；成员读取返回 <code>ShopView</code>。两者都不返回任何 OpenID 或 token 摘要。</li>
+      <li>新增店铺前必须明确提示：店铺名称、地址、坐标和备注会对拿到该清单链接的访客公开；不要在备注里填写个人隐私。</li>
+      <li>日志不得输出完整地址、精确经纬度、OpenID、邀请 token、数据库完整文档或用户授权信息。</li>
+      <li>正式数据库禁止自动写入示例店铺；新清单默认显示正常空态。</li>
+    </ul>
+  </section>
+
+  <h2>6. 页面与交互规格</h2>
+
+  <h3>6.1 管理 Tab <code>pages/manage/manage.vue</code></h3>
+  <section class="card">
+    <ol>
+      <li>底部原生 tabBar 固定为三个 Tab：<strong>地图 / 美食 / 管理</strong>。管理 Tab 使用新增的管理 PNG 图标，并遵循 Pink Topaz 选中态。</li>
+      <li>首次进入没有清单时，管理页引导输入“我的显示名称”和“清单名称”，创建共享清单并自动成为创建者；不得要求手机号或微信头像昵称授权。</li>
+      <li>管理页展示用户已加入的所有清单、当前身份与最近使用时间；选择后写入本地 <code>currentGroupId</code>，地图和美食 Tab 同步切换。</li>
+      <li><code>currentGroupId</code> 只用于界面状态，不能作为授权凭据；每次云函数请求仍须验证当前 OpenID 的有效成员关系。</li>
+      <li>切换清单时先清空上一清单的列表、marker、分页游标和在途请求；旧请求结果不得覆盖新清单。</li>
+      <li>同一页展示当前清单成员及 owner/member 标签。有效成员可看成员列表；只有创建者可生成/撤销邀请、修改名称和移除普通成员。</li>
+      <li>访客进入管理 Tab 时不显示成员列表，只展示清单名称、“当前为只读访客”和“加入清单后可添加店铺”入口。</li>
+      <li>创建者移除成员前二次确认；被移除成员立即失权，其已添加店铺继续保留并由创建者管理。创建者不能移除自己。</li>
+      <li>MVP 不做所有权转让、解散清单、公开搜索和普通成员邀请；朋友未加入即可浏览，加入后才可添加自己的店铺。</li>
+    </ol>
+  </section>
+
+  <h3>6.2 邀请与微信分享 <code>pages/invite/index.vue</code></h3>
+  <section class="card">
+    <ol>
+      <li>创建者先点击“生成邀请链接”；云函数成功返回明文 token、有效期和剩余人数后，页面才显示 <code>&lt;button open-type="share"&gt;</code>。因为 <code>onShareAppMessage</code> 不能依赖临时异步生成 token，不得在分享回调里现生成。</li>
+      <li><code>onShareAppMessage</code> 返回路径 <code>/pages/invite/index?publicId=...&amp;token=...</code>，只携带公开清单标识和 URL 编码后的邀请 token，不携带内部 groupId、OpenID、角色或店铺数据。</li>
+      <li>朋友从聊天卡片打开后，先看到清单名称、“直接看看地图”和“加入后一起添加”两个入口；打开链接不得自动加入。</li>
+      <li>点击“直接看看地图”使用 <code>publicId</code> 进入只读地图和美食列表；即使邀请 token 过期或被撤销，公开清单仍可浏览。</li>
+      <li>朋友填写 1～20 字显示名称并确认加入；<code>acceptInvite</code> 幂等处理，重复点击或重复打开只能产生一条成员关系、只计一次使用次数。</li>
+      <li>邀请过期、撤销、用尽或伪造时，加入按钮提示“邀请无效或已过期”，但保留“只读查看地图”；加入成功后立即从内存和本地缓存清除 token，切换到该清单并进入地图。</li>
+      <li>分享链接可以被继续转发，因此不是“指定好友身份”。MVP 依靠 7 天有效期、50 人上限和创建者随时撤销控制风险；若未来需要逐人审批，再增加 pending 审批流程。</li>
+    </ol>
+  </section>
+
+  <h3>6.3 地图页 <code>pages/index/index.vue</code></h3>
+  <section class="card">
+    <ol>
+      <li>顶部显示当前共享清单名称、切换入口和“创建者/成员”标签；页面进入和每次 <code>onShow</code> 时刷新当前清单店铺。</li>
+      <li><strong>所有用户，包括未加入的访客，都能看到当前公开清单内由所有成员添加的全部店铺</strong>，不能按创建人私下过滤；访客没有新增、编辑和删除入口。</li>
+      <li>定位是增强能力而不是使用门槛：首次进入先用非阻塞说明解释用途，由用户主动点击“获取当前位置”或“离我最近”后再调用定位；定位类型使用 <code>gcj02</code>。</li>
+      <li>地图默认围绕当前位置，默认缩放级别约 14；如果定位不可用，优先使用本地保存的上一次有效位置，否则使用应用内固定回退中心，并明确显示“尚未获取当前位置”。</li>
+      <li>用三类现有 PNG 生成 markers。微信 marker 的 <code>id</code> 使用本地数值 ID，同时维护 <code>Map&lt;number, string&gt;</code> 映射到云数据库字符串 <code>_id</code>。</li>
+      <li>点击 marker 后显示店铺卡片：名称、分类、地址、备注、直线距离（有定位时）和“导航前往”。成员可额外看到添加者显示名；只有 <code>canEdit/canDelete</code> 为真时显示管理按钮。</li>
+      <li>右下角“离我最近”按钮打开底部弹层，按直线距离升序显示。没有定位时按钮仍可点击，但弹出解释和“重新授权/重新定位”操作；没有店铺时展示空态及“去添加”。</li>
+      <li>初次载入不要自动执行 <code>include-points</code>，避免远距离店铺把地图缩得过小。可提供“显示全部”按钮，由用户主动触发。</li>
+      <li>云函数按页读取当前清单全部有效店铺并生成 markers；在 200 家 MVP 容量内，地图必须展示全部店铺，不能只取前 20 条或当前用户的数据。</li>
+      <li>地图上方显示简洁分类图例；所有浮层、FAB 和弹窗必须尽早在 iOS、Android 真机验证与原生 map 的叠层兼容。</li>
+    </ol>
+  </section>
+
+  <h3>6.4 美食页 <code>pages/food/food.vue</code></h3>
+  <section class="card">
+    <ol>
+      <li>顶部分类 Tab：全部、饭店、蛋糕店、奶茶店。切换分类后重置分页并重新查询。</li>
+      <li>顶部显示当前共享清单和切换入口。所有访客和成员都能看到完整店铺列表；成员可看到添加者显示名。只有自己添加的店铺或创建者管理任意店铺时才显示编辑/删除。</li>
+      <li>每页 <code>PAGE_SIZE = 20</code>，支持加载更多；展示明确的首次加载、加载更多、没有更多、空数据和加载失败状态。</li>
+      <li>有效成员显示 FAB“新增店铺”；访客不显示 FAB，并展示“加入清单后可以添加店铺”的轻提示。表单字段包括名称、分类、“在地图上选点”、只读地址、备注。</li>
+      <li><code>wx.chooseLocation</code> 成功后一次性回填地址和坐标；用户取消不报错、不清空已有选择。地址不允许脱离坐标单独编辑。</li>
+      <li>新增与编辑共用同一套校验和表单组件逻辑。保存期间禁用提交按钮，防止重复点击；失败保留用户输入并提供重试。</li>
+      <li>删除必须二次确认；删除期间禁用重复操作；失败时保留列表项并显示可理解的错误提示。</li>
+      <li>新增时由服务端绑定当前清单和当前成员；客户端不得提交创建者身份。新增、编辑或删除成功后更新列表，其他成员刷新或重新进入时必须看到同步结果。</li>
+    </ol>
+  </section>
+
+  <h3>6.5 主题和可用性</h3>
+  <section class="card">
+    <table>
+      <tbody>
+      <tr><th>色彩</th><td>导航栏和 tabBar 使用 <code>#f5a7a2</code>，主操作使用 <code>#fd355a</code>，页面背景 <code>#efe9d9</code>，卡片 <code>#fefcf9</code>，主文字 <code>#37291a</code>。</td></tr>
+      <tr><th>对比度</th><td>亮粉只用于按钮、选中态和少量强调；正文使用深棕，避免粉色小字造成可读性不足。</td></tr>
+      <tr><th>点击区域</th><td>主要按钮和图标点击区域不小于 44×44 CSS px；危险删除操作与编辑操作保持足够间距。</td></tr>
+      <tr><th>安全区</th><td>FAB、底部弹层和列表底部留出小程序安全区及 tabBar 空间。</td></tr>
+      <tr><th>文案</th><td>统一使用“饭店 / 蛋糕店 / 奶茶店”“直线距离”“在地图上选点”；错误信息说明用户下一步能做什么。</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <h2>7. 页面状态与失败恢复</h2>
+  <section class="card">
+    <table>
+      <tbody>
+      <tr><th>状态</th><th>界面行为</th><th>恢复入口</th></tr>
+      <tr><td>没有加入任何清单</td><td>展示创建清单入口；如果由邀请链接进入则先展示邀请预览</td><td>创建新清单或确认加入</td></tr>
+      <tr><td>邀请加载中</td><td>只显示加载状态，不提前暴露清单内容</td><td>成功展示预览；失败进入统一失效态</td></tr>
+      <tr><td>邀请过期/撤销/用尽/伪造</td><td>加入操作统一显示“邀请无效或已过期”，但公开地图和店铺仍可只读浏览</td><td>只读查看，或联系创建者获取新邀请</td></tr>
+      <tr><td>重复加入</td><td>视为幂等成功，不新增成员、不重复计算使用次数</td><td>直接进入已有清单</td></tr>
+      <tr><td>成员已被移除</td><td>清空成员身份、成员列表和编辑缓存，立即切换成公开只读模式；继续展示店铺</td><td>返回管理 Tab 查看只读状态</td></tr>
+      <tr><td>写权限被拒绝</td><td>区分“未加入/已移除/普通成员无管理权”，不得伪装成保存成功</td><td>刷新成员状态；访客可继续只读浏览</td></tr>
+      <tr><td>编辑冲突</td><td>保留本地输入，提示店铺已被其他成员更新</td><td>刷新最新数据后重新编辑</td></tr>
+      <tr><td>云环境未配置</td><td>显示配置提示，不发起数据库请求，不让页面无限 loading</td><td>开发交付说明中指出填写位置；配置后重新进入</td></tr>
+      <tr><td>首次加载</td><td>显示骨架或加载提示，防止重复请求</td><td>成功进入内容；失败进入错误态</td></tr>
+      <tr><td>没有店铺</td><td>显示“还没有收藏的店铺”与新增按钮，不写入示例数据</td><td>打开新增表单</td></tr>
+      <tr><td>定位被拒绝</td><td>公开列表继续可用，成员 CRUD 继续可用；距离显示为“未定位”</td><td>“去设置”调用 <code>wx.openSetting</code>，或“重新定位”</td></tr>
+      <tr><td>定位失败/超时</td><td>保留上一次有效位置或回退中心，显示非阻塞提示</td><td>重新定位</td></tr>
+      <tr><td>选点取消</td><td>静默返回表单，不清空已有值</td><td>再次选点</td></tr>
+      <tr><td>网络/数据库失败</td><td>停止 loading，保留已有内容和表单输入，显示简短原因</td><td>重试按钮</td></tr>
+      <tr><td>保存中</td><td>按钮 loading 且不可重复提交；关闭弹层前给出合理保护</td><td>成功关闭并刷新，失败恢复按钮</td></tr>
+      <tr><td>删除失败</td><td>列表项不消失，不做虚假的成功提示</td><td>允许再次删除</td></tr>
+      <tr><td>清单达到 200 家</td><td>所有既有店铺继续完整显示，新增按钮提示“当前清单已满”</td><td>由创建者删除不需要的店铺；未来再升级聚合和容量</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <h2>8. 云函数 API、数据访问与分页策略</h2>
+  <section class="card">
+    <ul>
+      <li><code>src/services/group.ts</code> 和 <code>src/services/shop.ts</code> 是页面调用云函数的唯一入口；小程序端禁止出现 <code>db.collection(...)</code> 业务读写。</li>
+      <li><code>groupApi</code> 至少提供：<code>bootstrap</code>、<code>getPublicGroup</code>、<code>createGroup</code>、<code>listMyGroups</code>、<code>updateGroup</code>、<code>createInvite</code>、<code>previewInvite</code>、<code>acceptInvite</code>、<code>revokeInvite</code>、<code>listMembers</code>、<code>removeMember</code>。</li>
+      <li><code>shopApi</code> 至少提供：<code>listPublicShops</code>、<code>listPublicMapShops</code>、<code>listMemberShops</code>、<code>createShop</code>、<code>updateShop</code>、<code>deleteShop</code>。公开读取先验证 <code>publicId</code> 对应 active/public_read 清单；写操作必须验证有效成员和角色。</li>
+      <li><code>getPublicGroup</code>、<code>listPublicShops</code> 和 <code>listPublicMapShops</code> 允许访客调用，但只返回公开清单名称及脱敏店铺 DTO，不返回成员、添加者、内部 groupId 或邀请信息。</li>
+      <li>列表默认按 <code>updatedAt desc, _id desc</code> 游标分页，每页最多 20 条；服务端限制客户端传入的 limit，不能用无限制 skip 扫描。</li>
+      <li>地图数据经公开只读云函数分页读取当前清单全部成员添加的店铺，不能按当前用户过滤或假设一次 <code>get()</code> 返回全部；在 200 家容量内必须全部渲染。</li>
+      <li>新增的 <code>groupId</code>、创建者、角色和时间全部由服务端根据成员关系写入；更新只改变白名单字段，禁止把客户端传来的完整对象直接回写。</li>
+      <li>列表请求需要防止竞态：切换清单、分类或页面销毁后，旧请求结果不得覆盖新清单数据。</li>
+      <li>创建清单与 owner 成员、接受邀请与使用次数更新必须使用事务或可靠幂等补偿；并发加入不能超过人数上限。</li>
+      <li>数据库规则验收必须证明：客户端 SDK 直接 <code>get/add/update/remove</code> 全部失败，只有通过云函数且权限正确的请求成功。</li>
+    </ul>
+  </section>
+
+  <h2>9. 实施里程碑与验收条件</h2>
+  <section class="card">
+    <table>
+      <tbody>
+      <tr>
+        <th class="nowrap">里程碑</th>
+        <th>实施内容</th>
+        <th>阶段验收</th>
+      </tr>
+      <tr>
+        <td><span class="tag tag-info">M0</span><br>工程基线</td>
+        <td>安全初始化模板；安装并锁定依赖；配置 Wot UI、地图/美食/管理三个 tabBar、主题；生成 PNG；建立环境配置守卫。</td>
+        <td><code>npm install</code>、图标脚本、类型检查和 <code>build:mp-weixin</code> 成功；三个 Tab 正确生成；源码不含真实密钥。</td>
+      </tr>
+      <tr>
+        <td><span class="tag tag-info">M1</span><br>共享服务端</td>
+        <td>创建四个仅管理端集合；实现云函数身份、清单、成员、权限中间件、事务与脱敏响应。</td>
+        <td>A 可创建清单并成为唯一 owner；C 未加入时只能通过公开 API 看脱敏店铺，不能看到成员或内部字段；客户端数据库 CRUD 全部失败。</td>
+      </tr>
+      <tr>
+        <td><span class="tag tag-info">M2</span><br>邀请分享闭环</td>
+        <td>实现高熵 token、摘要存储、有效期/次数/撤销、微信分享卡片、邀请预览和幂等加入。</td>
+        <td>A 从管理 Tab 分享给 B；B 冷启动打开后可先只读看地图，再确认加入；重复加入只有一条成员记录；失效 token 不能加入但仍可只读查看。</td>
+      </tr>
+      <tr>
+        <td><span class="tag tag-info">M3</span><br>多人店铺数据层</td>
+        <td>完成服务端字段校验、分页、角色授权、请求幂等和乐观并发；补齐 Haversine、表单和鉴权单测。</td>
+        <td>A/B 都可添加；B 只能改删自己的，A 可管理全部；伪造 role/openId/createdBy 无效；冲突更新不会静默覆盖。</td>
+      </tr>
+      <tr>
+        <td><span class="tag tag-info">M4</span><br>管理与美食 Tab</td>
+        <td>完成清单创建/切换、成员列表、邀请管理、成员移除，以及共享列表 CRUD、分类和分页。</td>
+        <td>三个 Tab 可切换；切换清单无旧数据闪现；B 添加店铺后 A 刷新可见；移除 B 后其立即失去成员信息和全部写权限并降级为访客。</td>
+      </tr>
+      <tr>
+        <td><span class="tag tag-info">M5</span><br>共享地图闭环</td>
+        <td>显示当前清单所有成员添加的店铺，完成 marker、添加者信息、定位、最近排序、显示全部和导航。</td>
+        <td>A/B 加入、C 不加入，三者仍看到相同店铺；C 没有写入口；marker 对应正确；定位拒绝不阻断共享浏览和成员新增。</td>
+      </tr>
+      <tr>
+        <td><span class="tag tag-info">M6</span><br>稳定性与安全</td>
+        <td>补齐邀请、权限失效、网络、竞态、隐私和日志状态；完成越权、并发加入和数据库规则验证。</td>
+        <td>伪造参数不能越权；并发不超邀请人数；没有自动示例写入或敏感日志；弱网不无限 loading。</td>
+      </tr>
+      <tr>
+        <td><span class="tag tag-ok">M7</span><br>交付与发布准备</td>
+        <td>运行全量验证；在 iOS、Android 用三个账号走真实聊天分享；整理审核发布和正式朋友使用说明。</td>
+        <td>类型检查、单测、云函数测试和生产构建全通过；真实分享闭环通过；准确报告未验证项。</td>
+      </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <h2>10. 验证矩阵</h2>
+  <section class="card">
+    <h3>自动验证</h3>
+    <ul class="checklist">
+      <li><code>npm run type-check</code>：零 TypeScript 错误。</li>
+      <li><code>npm run test</code>：距离、表单、marker、邀请幂等、公开 DTO 脱敏以及 owner/member/visitor 权限矩阵测试通过。</li>
+      <li><code>npm run build:mp-weixin</code>：微信小程序生产构建成功。</li>
+      <li>扫描源码和计划文档：不存在 AppSecret、令牌或腾讯位置服务 Key；不存在“所有用户可读写”的实施配置。</li>
+      <li>检查构建输出：地图/美食/管理三个 tabBar 及 marker PNG 被正确打包，邀请页路由有效；实际生成的 <code>app.json</code> 包含位置权限说明和所需 <code>requiredPrivateInfos</code> 声明。</li>
+    </ul>
+
+    <h3>开发者工具与真机验证</h3>
+    <table>
+      <tbody>
+      <tr><th>类别</th><th>必须覆盖的用例</th></tr>
+      <tr><td>首次使用</td><td>同意隐私与定位；拒绝定位；拒绝后去设置再授权；云环境缺失提示。</td></tr>
+      <tr><td>真实分享</td><td>A 从管理 Tab 生成邀请并分享到微信聊天；B 冷启动打开卡片，先只读查看，再确认加入；分享回调不临时异步生成 token。</td></tr>
+      <tr><td>公开查看</td><td>C 未加入也能在地图和美食页看到 A/B 添加的全部店铺，但看不到成员列表、添加者身份、邀请信息和任何写入口。</td></tr>
+      <tr><td>协作权限</td><td>B 加入后可添加并改删自己的店；不能改删 A 的店；A 可以管理全部；C 伪造写请求仍失败。</td></tr>
+      <tr><td>邀请安全</td><td>重复加入幂等；邀请过期、撤销、用尽、伪造后不能加入但仍可只读查看；并发加入不突破上限。</td></tr>
+      <tr><td>CRUD</td><td>正常新增；必填缺失；超长文本；取消选点；重复点击保存；编辑位置；确认及取消删除；失败后重试。</td></tr>
+      <tr><td>列表</td><td>空态；三种分类；20 条以上分页；没有更多；切换分类时无旧请求串页。</td></tr>
+      <tr><td>地图</td><td>三类 marker；marker 与店铺映射正确；25 条及 200 条时均能显示全部；详情；无定位状态。</td></tr>
+      <tr><td>距离与导航</td><td>最近排序；米/公里格式；明确“直线距离”；导航坐标正确。</td></tr>
+      <tr><td>兼容性</td><td>至少一台 iOS 和一台 Android 真机；三个 Tab 正常；地图与 Wot 弹层/FAB 无遮挡、穿透或无法点击。</td></tr>
+      <tr><td>网络异常</td><td>弱网、断网、请求失败时停止 loading、保留表单内容并可重试。</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <h2>11. 完成定义（Definition of Done）</h2>
+  <section class="card">
+    <ul class="checklist">
+      <li>项目可通过全新安装复现，<code>package-lock.json</code> 已生成且与 <code>package.json</code> 一致。</li>
+      <li>地图、美食、管理三个 Tab 和邀请落地页闭环完整，所有 P0/P1 状态有明确 UI，不存在无限 loading 或静默失败。</li>
+      <li>四个业务集合均为仅管理端可读写；客户端直连失败；公开只读、成员写入和创建者管理权限均通过云函数测试。</li>
+      <li>A/B/C 三账号验证通过：C 未加入能看到全部店铺但不能写；B 加入后能添加并只管理自己的店；A 可以管理全部。</li>
+      <li>真实微信聊天分享完成“只读浏览 → 确认加入 → 添加店铺 → 其他用户刷新可见”闭环。</li>
+      <li>正式环境不会自动写入任何示例数据；空用户得到正常空态。</li>
+      <li>源码不包含腾讯地图 Key、AppSecret 或其他敏感信息。</li>
+      <li>列表和地图数据都经过分页处理；marker 字符串文档 ID 已正确映射为数值 ID。</li>
+      <li>定位拒绝不会导致页面不可用；所有人仍能浏览，已加入成员仍能选点新增和管理自己的店铺。</li>
+      <li>所有距离文案明确为直线距离；导航使用选点得到的有效坐标。</li>
+      <li>类型检查、单元测试、生产构建通过，且 iOS/Android 真机核心用例有真实记录。</li>
+      <li>README 或最终交付说明包含：AppID、云环境、集合权限、隐私指引、接口权限和体验版导入步骤。</li>
+    </ul>
+  </section>
+
+  <h2>12. 风险与后续演进</h2>
+  <section class="card">
+    <table>
+      <tbody>
+      <tr><th>风险</th><th>当前控制措施</th><th>未来演进触发条件</th></tr>
+      <tr><td>地图原生组件叠层兼容</td><td>M3 前先做真机技术样例，验证 popup、FAB 和点击事件</td><td>若兼容性不稳定，改用小程序推荐的同层渲染方案或 cover-view 结构</td></tr>
+      <tr><td>店铺数量增长</td><td>服务端游标分页、MVP 单清单容量 200、地图展示容量内全部店铺</td><td>需要超过 200 家时先引入视野查询、geohash 或 marker 聚合再放宽容量</td></tr>
+      <tr><td>直线距离与真实路线不一致</td><td>明确标注“直线距离”</td><td>用户确实需要路线时间时，再评估腾讯位置服务路线 API 和成本</td></tr>
+      <tr><td>公开链接泄露隐私</td><td>公开 DTO 不含成员和添加者信息；添加前明确提示地址、坐标和备注将公开</td><td>需要更强隐私时增加清单可见性开关或成员可见模式</td></tr>
+      <tr><td>邀请链接被转发</td><td>高熵 token、7 天有效、人数上限、创建者可撤销；公开浏览与加入权限分离</td><td>需要精确指定好友时增加创建者审批，不依赖分享链接识别收件人</td></tr>
+      <tr><td>云函数漏鉴权</td><td>统一鉴权中间件、权限矩阵测试、客户端直连完全关闭</td><td>功能增多时增加安全审查和活动日志</td></tr>
+      <tr><td>数据误删</td><td>删除二次确认</td><td>真实使用出现恢复需求后，再增加软删除或回收站</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <h2>13. 编码 AI 的最终交付格式</h2>
+  <section class="card">
+    <p>编码完成后，最终回复只需用表格报告以下内容：</p>
+    <table>
+      <tbody>
+      <tr><th>栏目</th><th>必须包含</th></tr>
+      <tr><td>完成了什么</td><td>按 M0～M7 列出已完成能力；未完成项必须明确写出，禁止含糊表述。</td></tr>
+      <tr><td>关键文件</td><td>列出入口、页面、service、权限/环境配置、类型、测试文件的可点击绝对路径。</td></tr>
+      <tr><td>验证结果</td><td>列出实际执行的命令、退出结果、开发者工具和真机型号；未运行的验证不得标为通过。</td></tr>
+      <tr><td>橙子酱待办</td><td>只列必须由用户完成的微信后台配置和体验版操作，提供准确路径。</td></tr>
+      <tr><td>注意事项</td><td>已知限制、外部阻塞、索引需求及后续建议。</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>「橙子吃吃」微信小程序 · 项目计划 v3 · 公开可看、加入可贡献 · 2026-08-14</footer>
+</main>
+</body>
+</html>

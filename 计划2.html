@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>「橙子吃吃」小程序 实施计划</title>
+<style>
+  :root {
+    --page-bg: #efe9d9;
+    --card-bg: #fefcf9;
+    --section-bg: #ffdece;
+    --text-primary: #37291a;
+    --text-accent: #980000;
+    --pink-primary: #f5a7a2;
+    --pink-bright: #fd355a;
+    --pink-coral: #f39ba0;
+    --pink-peach: #ffdece;
+    --pink-light: #ffebec;
+    --pink-dark: #980000;
+    --tag-beige: #e5c7a9;
+    --tag-pink: #fea2c2;
+    --tag-blue: #69a2ee;
+    --tag-green: #40916c;
+    --tag-brown: #c47a5e;
+    --tag-gold: #dbb671;
+    --tag-orange: #f19c79;
+    --tag-purple: #8673b4;
+    --border-light: #f5a7a2;
+    --divider: rgba(0,0,0,0.1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--page-bg);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    line-height: 1.7;
+    padding: 24px 16px 60px;
+  }
+  .container { max-width: 860px; margin: 0 auto; }
+
+  header.hero {
+    background: linear-gradient(135deg, var(--pink-primary), var(--pink-coral));
+    border-radius: 20px;
+    padding: 36px 28px;
+    color: #fff;
+    box-shadow: 0 8px 24px rgba(245, 167, 162, .45);
+    margin-bottom: 28px;
+  }
+  header.hero h1 { font-size: 30px; letter-spacing: 1px; margin-bottom: 8px; }
+  header.hero p { font-size: 14px; opacity: .95; }
+  header.hero .badges { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .badge {
+    background: rgba(255,255,255,.25);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 12px;
+    backdrop-filter: blur(4px);
+  }
+
+  h2 {
+    font-size: 21px;
+    margin: 40px 0 16px;
+    padding-left: 12px;
+    border-left: 5px solid var(--pink-bright);
+    color: var(--text-primary);
+  }
+  h3 { font-size: 16px; margin: 20px 0 10px; color: var(--pink-dark); }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-light);
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.04);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card-bg);
+    border-radius: 12px;
+    overflow: hidden;
+    font-size: 14px;
+  }
+  th, td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--divider);
+    vertical-align: top;
+  }
+  th {
+    background: var(--pink-light);
+    color: var(--pink-dark);
+    font-weight: 600;
+    white-space: nowrap;
+    width: 130px;
+  }
+  tr:last-child td { border-bottom: none; }
+
+  code {
+    background: var(--pink-light);
+    color: var(--pink-dark);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 13px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    word-break: break-all;
+  }
+  pre {
+    background: #fff7f5;
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.6;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  .tree {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.8;
+    background: #fff;
+    border: 1px dashed var(--border-light);
+    border-radius: 10px;
+    padding: 16px 20px;
+  }
+
+  ul, ol { padding-left: 22px; }
+  li { margin: 6px 0; }
+
+  .tip {
+    background: var(--pink-light);
+    border: 1px solid var(--border-light);
+    border-left: 5px solid var(--pink-bright);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin: 14px 0;
+    font-size: 14px;
+  }
+
+  .check { color: var(--tag-green); font-weight: 600; }
+  .warn { color: var(--pink-dark); font-weight: 600; }
+
+  .tag {
+    display: inline-block;
+    border-radius: 6px;
+    padding: 1px 10px;
+    font-size: 12px;
+    color: #fff;
+    margin-right: 4px;
+  }
+  .tag-green { background: var(--tag-green); }
+  .tag-blue { background: var(--tag-blue); }
+  .tag-gold { background: var(--tag-gold); }
+  .tag-purple { background: var(--tag-purple); }
+  .tag-orange { background: var(--tag-orange); }
+
+  footer {
+    text-align: center;
+    margin-top: 50px;
+    font-size: 12px;
+    color: rgba(55, 41, 26, .55);
+  }
+  @media (max-width: 600px) {
+    header.hero h1 { font-size: 24px; }
+    table { font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header class="hero">
+    <h1>🍊「橙子吃吃」小程序 · 实施计划</h1>
+    <p>uni-app + Vue 3 + TypeScript + Wot Design Uni（Wot UI v2）· 微信小程序</p>
+    <div class="badges">
+      <span class="badge">微信云开发</span>
+      <span class="badge">地图打点</span>
+      <span class="badge">离我最近</span>
+      <span class="badge">增删改查</span>
+      <span class="badge">Pink Topaz 主题</span>
+      <span class="badge">定稿 v2</span>
+    </div>
+  </header>
+
+  <!-- 一、技术决策 -->
+  <h2>一、技术决策（已确认）</h2>
+  <div class="card">
+    <table>
+      <tr><th>工程模板</th><td><code>dcloudio/uni-preset-vue#vite-ts</code> — uni-app 官方 Vue3 + TS 模板</td></tr>
+      <tr><th>组件库</th><td><code>@wot-ui/ui</code> v2（Wot Design Uni 新版，<code>wd-*</code> 前缀组件，easycom 自动注册）</td></tr>
+      <tr><th>数据存储</th><td>微信云开发 <code>wx.cloud.database()</code> 读写集合 <code>shops</code>，无自建后端</td></tr>
+      <tr><th>选点方式</th><td><code>wx.chooseLocation</code> 微信原生地图选点，免 key</td></tr>
+      <tr><th>图标处理</th><td>SVG → PNG（微信 tabBar / 地图 marker 均不支持 SVG），由 <code>sharp</code> 脚本转换</td></tr>
+      <tr><th>地图</th><td>微信原生 <code>&lt;map&gt;</code> 组件，展示/定位/选点/距离计算均不需腾讯 key</td></tr>
+      <tr><th>工程目录</th><td><code>/Users/chengmengyao/iWork/oranges-eat2</code></td></tr>
+    </table>
+    <div class="tip">
+      腾讯位置 key（<code>[REDACTED]</code>，原值已在腾讯位置服务控制台重置/删除，请勿复用旧值）不应再保存；MVP 全部使用微信原生地图能力，未来做「周边搜索 / 逆地址解析」时再申请新 Key 并配置合法域名 <code>apis.map.qq.com</code>。
+    </div>
+  </div>
+
+  <!-- 二、数据模型 -->
+  <h2>二、数据模型</h2>
+  <div class="card">
+    <pre>type Category = 'restaurant' | 'cake' | 'milktea';
+
+interface Shop {
+  _id?: string;
+  name: string;        // 店铺名称
+  category: Category;  // 分类：饭店 / 蛋糕店 / 奶茶店
+  latitude: number;    // 纬度 (gcj02)
+  longitude: number;   // 经度 (gcj02)
+  address: string;     // 地址
+  remark?: string;     // 备注
+  createTime: number;  // 创建时间戳
+}</pre>
+  </div>
+
+  <!-- 三、前置准备 -->
+  <h2>三、前置准备（橙子酱待办清单）</h2>
+  <div class="card">
+    <ol>
+      <li><span class="check">正式 AppID</span>：云开发 + 定位接口需正式小程序（测试号无法开通云开发）</li>
+      <li><span class="check">开通云开发</span>：微信开发者工具 → 云开发 → 创建环境 → 复制环境 ID（实现时填入 <code>src/config/env.ts</code>）</li>
+      <li><span class="check">建集合</span>：云开发控制台 → 数据库 → 创建 <code>shops</code> 集合，权限「所有用户可读写」（演示期）</li>
+      <li><span class="check">开定位权限</span>：小程序后台 → 开发管理 → 接口设置 → 开通 <code>getLocation</code>、<code>chooseLocation</code></li>
+      <li><span class="check">隐私指引</span>：小程序后台配置「用户隐私保护指引」，声明位置信息用途</li>
+    </ol>
+  </div>
+
+  <!-- 四、图标处理 -->
+  <h2>四、图标处理</h2>
+  <div class="card">
+    <p>新增脚本 <code>scripts/gen-icons.mjs</code>（基于 <code>sharp</code>），输出：</p>
+    <table>
+      <tr><th>输出文件</th><th>来源</th><th>用途</th></tr>
+      <tr><td><code>static/tabbar/map.png</code> (81×81)</td><td>地图.svg</td><td>tabBar 地图图标</td></tr>
+      <tr><td><code>static/tabbar/food.png</code> (81×81)</td><td>美食.svg</td><td>tabBar 美食图标</td></tr>
+      <tr><td><code>static/markers/restaurant.png</code> (~96×96 留白)</td><td>肉食.svg</td><td>地图饭店打点</td></tr>
+      <tr><td><code>static/markers/cake.png</code></td><td>甜甜圈.svg</td><td>地图蛋糕店打点</td></tr>
+      <tr><td><code>static/markers/milktea.png</code></td><td>奶茶.svg</td><td>地图奶茶店打点</td></tr>
+    </table>
+    <p>tabBar 选中态先用同图 + 文字变色，后续可按需生成主题色变体。</p>
+  </div>
+
+  <!-- 五、主题配色 -->
+  <h2>五、主题配色（Pink Topaz）</h2>
+  <div class="card">
+    <ul>
+      <li><code>src/uni.scss</code>：配色转为 SCSS 变量（<code>$page-bg</code>、<code>$pink-primary</code> 等）</li>
+      <li><code>src/styles/theme.scss</code>：<code>:root</code> CSS 变量 + 覆盖 Wot 主题变量（如 <code>--wot-color-theme: #fd355a</code>）</li>
+      <li>pages.json：导航栏背景 <code>#f5a7a2</code>、文字深棕；tabBar 背景 <code>#f5a7a2</code>、选中色 <code>#fd355a</code>、文字 <code>#37291a</code></li>
+      <li>页面背景 <code>#efe9d9</code> 米色、卡片 <code>#fefcf9</code>，遵循 CSS 中 10 条使用建议</li>
+    </ul>
+    <table>
+      <tr><th>色板</th><th>值</th><th>用途</th></tr>
+      <tr><td>主题粉</td><td><code>#f5a7a2</code></td><td>导航栏、标签栏背景</td></tr>
+      <tr><td>亮粉</td><td><code>#fd355a</code></td><td>主按钮、高亮、指示条</td></tr>
+      <tr><td>页面背景</td><td><code>#efe9d9</code></td><td>暖米色主背景</td></tr>
+      <tr><td>主文字</td><td><code>#37291a</code></td><td>深棕色文字</td></tr>
+      <tr><td>深红</td><td><code>#980000</code></td><td>强调文字、图标</td></tr>
+    </table>
+  </div>
+
+  <!-- 六、工程结构 -->
+  <h2>六、工程结构</h2>
+  <div class="card">
+    <div class="tree">
+oranges-eat2/
+├── scripts/gen-icons.mjs          # SVG→PNG 转换脚本
+├── svg/                            # 原始素材（保留）
+├── pink_topaz_miniapp_config.css   # 配色参考（保留）
+├── 计划.html                       # 本实施计划
+└── src/
+    ├── App.vue                     # 全局样式 + 云初始化
+    ├── uni.scss                    # 主题 SCSS 变量
+    ├── main.ts
+    ├── manifest.json               # appid / requiredPrivateInfos
+    ├── pages.json                  # 路由 + tabBar + 导航栏配色
+    ├── config/env.ts               # CLOUD_ENV_ID、TENCENT_MAP_KEY
+    ├── styles/theme.scss           # CSS 变量 + Wot 主题覆盖
+    ├── types/shop.ts               # Category、Shop 类型
+    ├── utils/cloud.ts              # wx.cloud 初始化、集合封装
+    ├── utils/shop.ts               # 增删改查 + 预置示例数据
+    ├── utils/geo.ts                # Haversine 距离 + 格式化
+    ├── utils/location.ts           # getLocation 授权处理
+    ├── static/tabbar/              # 地图/美食 tab 图标 PNG
+    ├── static/markers/             # 三类店铺打点 PNG
+    └── pages/
+        ├── index/index.vue         # 地图页（首页 tab）
+        └── food/food.vue           # 美食页（tab）
+    </div>
+  </div>
+
+  <!-- 七、功能设计 -->
+  <h2>七、功能设计</h2>
+
+  <h3>🗺️ 地图页 pages/index（首页 tab）</h3>
+  <div class="card">
+    <ul>
+      <li>全屏 <code>&lt;map&gt;</code>：<code>show-location</code> 显示当前位置蓝点，<code>markers</code> 打点全部店铺（按分类选 PNG 图标，宽高约 44px），<code>include-points</code> 自动缩放包含所有点</li>
+      <li>进入时 <code>getLocation(gcj02)</code> 取定位；首次启动若集合为空，<b>以当前位置为中心自动写入 7 家示例店铺</b>（3 饭店 / 2 蛋糕 / 2 奶茶，偏移 200~1500m）便于演示</li>
+      <li>右下角悬浮「离我最近」按钮 → 底部 <code>wd-popup</code> 弹出店铺列表，按距离升序，显示「xx 米 / x.xx 公里」+ 分类标签</li>
+      <li>点击 marker → 弹出店铺小卡片（名称 / 地址 / 备注）+「导航前往」（<code>openLocation</code>）</li>
+      <li>顶部叠加分类图例（三色小图标）</li>
+    </ul>
+  </div>
+
+  <h3>🍰 美食页 pages/food（tab）</h3>
+  <div class="card">
+    <ul>
+      <li>顶部 <code>wd-tabs</code> 筛选：全部 / 饭店 / 蛋糕店 / 奶茶店</li>
+      <li>店铺列表：分类图标 + 名称 + 地址 + 距我距离（已授权定位时显示）</li>
+      <li>右下 FAB「新增店铺」→ 底部 <code>wd-popup</code> 表单：名称、分类（radio）、「在地图上选点」按钮（<code>wx.chooseLocation</code> 自动回填经纬度+地址，可改）、备注</li>
+      <li>每条目「编辑 / 删除」操作，删除用 <code>wd-dialog</code> 二次确认，成功 <code>wd-toast</code></li>
+      <li>增删改查直连云开发 <code>shops</code> 集合，切回地图页自动刷新打点</li>
+    </ul>
+  </div>
+
+  <h3>☁️ 云数据层</h3>
+  <div class="card">
+    <p><code>db.collection('shops')</code> 的 <code>add / doc.update / doc.remove / get / count</code>；<code>wx.cloud.init({ env })</code> 在 <code>App.vue onLaunch</code> 守卫执行（非微信端跳过），环境未配置时 toast 提示。</p>
+  </div>
+
+  <!-- 八、实施步骤 -->
+  <h2>八、实施步骤</h2>
+  <div class="card">
+    <ol>
+      <li><code>degit</code> 拉取 vite-ts 模板到当前目录 → 安装依赖（npm）+ <code>sass@^1.98</code> + <code>@wot-ui/ui</code> + <code>sharp</code></li>
+      <li>配置：pages.json（easycom / tabBar / permission / 导航栏）、manifest.json（appid / <code>requiredPrivateInfos</code>）、vite.config.ts（sass modern-compiler 防警告）、tsconfig（wot 全局类型）</li>
+      <li>运行 <code>gen-icons.mjs</code> 生成 PNG</li>
+      <li>写主题（uni.scss / theme.scss / App.vue）</li>
+      <li>写数据层 + 工具（types / cloud / shop / geo / location）</li>
+      <li>写地图页、美食页</li>
+      <li>验证：<code>npm run type-check</code> + <code>npm run build:mp-weixin</code> 构建通过</li>
+    </ol>
+  </div>
+
+  <!-- 九、验证方式 -->
+  <h2>九、验证方式</h2>
+  <div class="card">
+    <ul>
+      <li><b>命令验证</b>：type-check 零错误、mp-weixin 构建成功</li>
+      <li><b>开发者工具 / 真机验证</b>（橙子酱配合）：导入 <code>dist/dev/mp-weixin</code> → 填入云环境 ID → 验证定位授权、打点渲染、离我最近列表、增删改查闭环</li>
+    </ul>
+  </div>
+
+  <!-- 十、风险与注意 -->
+  <h2>十、风险与注意</h2>
+  <div class="card">
+    <ul>
+      <li><span class="warn">云开发、chooseLocation</span> 必须在正式 AppID + 已开通对应权限下才能跑通（见前置清单）</li>
+      <li>集合权限「所有用户可读写」仅是演示配置，正式发布建议改为云函数写入 + 权限规则收紧</li>
+      <li><code>wd-toast</code> / <code>wd-dialog</code> 等按 Wot 规范需在页面显式放置（不支持全局挂载）</li>
+      <li>地图打点图标为彩色图标直接上地图，如需白色圆底徽标样式可后续增强</li>
+    </ul>
+  </div>
+
+  <footer>「橙子吃吃」小程序 · 实施计划 · 基于 Pink Topaz 配色 · 生成于 2026-08-14</footer>
+</div>
+</body>
+</html>
