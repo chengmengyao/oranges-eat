@@ -701,7 +701,7 @@ onShow(() => {
 .fab-group {
   position: absolute;
   right: 20rpx;
-  bottom: calc(40rpx + env(safe-area-inset-bottom));
+  bottom: calc(300rpx + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 16rpx;
@@ -710,7 +710,7 @@ onShow(() => {
 .zoom-group {
   position: absolute;
   right: 20rpx;
-  bottom: calc(340rpx + env(safe-area-inset-bottom));
+  bottom: calc(600rpx + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   align-items: center;

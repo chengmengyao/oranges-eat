@@ -302,24 +302,26 @@ onReachBottom(() => {
 
 <template>
   <view class="food-page">
-    <view v-if="currentGroup" class="group-bar">
-      <text class="group-name">{{ currentGroup.name }}</text>
-      <text class="group-tag">{{ isMember ? (currentGroup.isOwner ? '创建者' : '成员') : '访客' }}</text>
-    </view>
-
-    <scroll-view class="category-tabs" scroll-x :show-scrollbar="false">
-      <view class="category-tabs-inner">
-        <view
-          v-for="tab in tabs"
-          :key="tab.value"
-          class="category-tab"
-          :class="{ active: category === tab.value }"
-          @click="onCategoryChange(tab.value)"
-        >
-          <text>{{ tab.label }}</text>
-        </view>
+    <view class="sticky-header">
+      <view v-if="currentGroup" class="group-bar">
+        <text class="group-name">{{ currentGroup.name }}</text>
+        <text class="group-tag">{{ isMember ? (currentGroup.isOwner ? '创建者' : '成员') : '访客' }}</text>
       </view>
-    </scroll-view>
+
+      <scroll-view class="category-tabs" scroll-x :show-scrollbar="false">
+        <view class="category-tabs-inner">
+          <view
+            v-for="tab in tabs"
+            :key="tab.value"
+            class="category-tab"
+            :class="{ active: category === tab.value }"
+            @click="onCategoryChange(tab.value)"
+          >
+            <text>{{ tab.label }}</text>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
 
     <view v-if="loadStatusText && shops.length === 0" class="state-box">
       <text>{{ loadStatusText }}</text>
@@ -400,6 +402,15 @@ onReachBottom(() => {
 .food-page {
   min-height: 100vh;
   padding: 20rpx 24rpx calc(140rpx + env(safe-area-inset-bottom));
+}
+
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background-color: $page-bg;
+  margin: -20rpx -24rpx 0;
+  padding: 20rpx 24rpx 0;
 }
 
 .group-bar {
