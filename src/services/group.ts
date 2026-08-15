@@ -32,13 +32,9 @@ export async function getPublicGroup(
   return callFunction('groupApi', { action: 'getPublicGroup', publicId })
 }
 
-export async function createGroup(
-  displayName: string,
-  groupName: string,
-): Promise<CreateGroupResult> {
+export async function createGroup(groupName: string): Promise<CreateGroupResult> {
   return callFunction('groupApi', {
     action: 'createGroup',
-    displayName,
     groupName,
   })
 }

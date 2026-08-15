@@ -26,7 +26,6 @@ const members = ref<MemberView[]>([])
 const currentGroup = ref<GroupView | null>(null)
 
 const createMode = ref(false)
-const displayName = ref('')
 const groupName = ref('')
 const creating = ref(false)
 
@@ -82,19 +81,14 @@ async function refresh() {
 }
 
 async function handleCreate() {
-  const name = displayName.value.trim()
   const gname = groupName.value.trim()
-  if (!name) {
-    uni.showToast({ title: '请输入显示名称', icon: 'none' })
-    return
-  }
   if (!gname) {
     uni.showToast({ title: '请输入清单名称', icon: 'none' })
     return
   }
   creating.value = true
   try {
-    const res = await createGroup(name, gname)
+    const res = await createGroup(gname)
     await loadGroups()
     store.setCurrentGroup(res.group.id)
     currentGroupId.value = res.group.id
@@ -324,13 +318,12 @@ onShow(() => {
 
     <view v-else-if="createMode" class="card">
       <text class="section-title">创建共享清单</text>
-      <input v-model="displayName" class="input" placeholder="我的显示名称（1-20 字）" maxlength="20" />
       <input v-model="groupName" class="input" placeholder="清单名称（1-30 字）" maxlength="30" />
       <view class="row-gap">
+        <button class="btn-plain" @click="createMode = false">取消</button>
         <button class="btn-primary" :loading="creating" :disabled="creating" @click="handleCreate">
           创建
         </button>
-        <button class="btn-plain" @click="createMode = false">取消</button>
       </view>
     </view>
 
@@ -379,19 +372,19 @@ onShow(() => {
         <text class="muted">朋友无需加入就能浏览地图，确认加入后即可添加店铺</text>
         <view class="row-gap">
           <button
+            class="btn-plain"
+            :disabled="!currentGroup.isOwner"
+            @click="handleRevokeInvite"
+          >
+            撤销全部邀请
+          </button>
+          <button
             class="btn-primary"
             :loading="generatingInvite"
             :disabled="generatingInvite || !currentGroup.isOwner"
             @click="handleGenerateInvite"
           >
             生成邀请链接
-          </button>
-          <button
-            class="btn-plain"
-            :disabled="!currentGroup.isOwner"
-            @click="handleRevokeInvite"
-          >
-            撤销全部邀请
           </button>
         </view>
 
@@ -418,8 +411,8 @@ onShow(() => {
               </view>
             </view>
             <view class="row-gap">
-              <button v-if="qrCodeFileId" class="btn-primary" @click="handleSaveQrCode">保存二维码到相册</button>
               <button class="btn-plain" @click="handleRevokeInvite">撤销此邀请</button>
+              <button v-if="qrCodeFileId" class="btn-primary" @click="handleSaveQrCode">保存二维码到相册</button>
             </view>
           </view>
         </wd-popup>

@@ -291,7 +291,7 @@ function onLoadMore() {
 const loadStatusText = computed(() => {
   if (loading.value && shops.value.length === 0) return '加载中…'
   if (errorMsg.value && shops.value.length === 0) return errorMsg.value
-  if (shops.value.length === 0 && firstLoaded.value) return '还没有收藏的店铺'
+  if (shops.value.length === 0 && firstLoaded.value) return '还没有添加店铺'
   return ''
 })
 

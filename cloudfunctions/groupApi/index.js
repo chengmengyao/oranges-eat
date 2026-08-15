@@ -182,11 +182,10 @@ async function getPublicGroup(event) {
 }
 
 async function createGroup(event, openId) {
-  const displayName = normalizeText(event.displayName, 20)
   const groupName = normalizeText(event.groupName, 30)
-
-  if (!displayName) return fail('请输入显示名称', 'INVALID_PARAM')
   if (!groupName) return fail('请输入清单名称', 'INVALID_PARAM')
+  // 创建者显示名称选填，缺省时使用清单名称
+  const displayName = normalizeText(event.displayName, 20) || groupName
 
   const publicId = randomHex(16)
   const now = Date.now()
