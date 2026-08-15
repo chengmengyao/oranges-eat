@@ -110,141 +110,451 @@ onLoad((query) => {
 
 <template>
   <view class="invite-page">
-    <view v-if="loading" class="center">
-      <wd-loading size="40rpx" />
-      <text class="muted">加载中…</text>
+    <view v-if="loading" class="state-page">
+      <view class="loading-orbit">
+        <view class="loading-dot" />
+        <view class="loading-dot delay" />
+        <view class="loading-dot delay-more" />
+      </view>
+      <text class="state-copy">正在打开邀请…</text>
     </view>
 
     <template v-else-if="preview">
-      <view class="card hero-card">
-        <text class="emoji">🍊</text>
-        <text class="title">{{ preview.name }}</text>
-        <text class="muted">{{ preview.memberCount }} 位成员在共同维护这份美食地图</text>
-
-        <view v-if="mode === 'invite'" class="entry-list">
-          <button class="btn-primary" @click="viewMap">直接看看地图</button>
-          <view class="join-box">
-            <text class="muted">加入后可以一起添加店铺</text>
-            <input
-              v-model="joinName"
-              class="input"
-              placeholder="输入显示名称（1-20 字）"
-              maxlength="20"
-            />
-            <text v-if="joinError" class="error">{{ joinError }}</text>
-            <button
-              class="btn-primary"
-              :disabled="joining"
-              :loading="joining"
-              @click="confirmJoin"
-            >
-              确认加入
-            </button>
+      <view class="invite-content">
+        <view class="hero-visual">
+          <view class="buddy buddy-left">
+            <image src="/static/tabbar/调皮.png" mode="aspectFit" />
+          </view>
+          <view class="spark spark-one">✦</view>
+          <view class="spark spark-two">●</view>
+          <view class="buddy buddy-right">
+            <image src="/static/tabbar/惊讶.png" mode="aspectFit" />
           </view>
         </view>
 
-        <view v-else class="entry-list">
-          <text class="muted">当前为只读访客，可直接浏览公开美食地图</text>
-          <button class="btn-primary" @click="viewMap">查看地图</button>
+        <text class="eyebrow">共享美食地图</text>
+        <text class="hero-title">一起收藏好吃的</text>
+        <text class="hero-copy">
+          {{ mode === 'invite' ? '朋友邀请你共同维护一份美食清单' : '你正在查看一份朋友分享的美食清单' }}
+        </text>
+
+        <view class="group-card">
+          <view class="group-icon-wrap">
+            <text class="group-icon">🍊</text>
+          </view>
+          <view class="group-info">
+            <text class="group-label">邀请你加入</text>
+            <text class="group-name">{{ preview.name }}</text>
+            <text class="group-meta">{{ preview.memberCount }} 位成员 · 一起发现好店</text>
+          </view>
+          <view class="member-faces">
+            <image src="/static/tabbar/调皮.png" mode="aspectFit" />
+            <image src="/static/tabbar/惊讶.png" mode="aspectFit" />
+          </view>
         </view>
+
+        <view
+          v-if="mode === 'invite' && !preview.alreadyMember"
+          class="name-card"
+        >
+          <view class="name-heading">
+            <text class="name-label">加入后如何称呼你</text>
+            <text class="required-tag">必填</text>
+          </view>
+          <input
+            v-model="joinName"
+            class="name-input"
+            placeholder="例如：小橙"
+            placeholder-class="input-placeholder"
+            maxlength="20"
+            confirm-type="done"
+            @confirm="confirmJoin"
+          />
+          <text class="name-tip">仅清单成员可见，用于成员列表和标记店铺由谁添加</text>
+          <text v-if="joinError" class="error">{{ joinError }}</text>
+        </view>
+      </view>
+
+      <view class="invite-actions">
+        <button
+          v-if="mode === 'invite' && !preview.alreadyMember"
+          class="action-btn primary-action"
+          :disabled="joining"
+          :loading="joining"
+          @click="confirmJoin"
+        >
+          <text class="action-star">★</text>
+          加入这份清单
+        </button>
+        <button
+          v-else
+          class="action-btn primary-action"
+          @click="viewMap"
+        >
+          {{ preview.alreadyMember ? '进入我的清单' : '查看共享地图' }}
+        </button>
+        <button
+          v-if="mode === 'invite' && !preview.alreadyMember"
+          class="action-btn secondary-action"
+          @click="viewMap"
+        >
+          先看看地图
+        </button>
       </view>
     </template>
 
-    <view v-else class="center card">
-      <image class="empty-image" src="/static/tabbar/惊讶.png" mode="aspectFit" />
-      <text class="title">清单不存在或链接已失效</text>
-      <text class="muted">请向创建者获取新的邀请链接</text>
-      <button class="btn-primary" @click="goManage">前往管理</button>
+    <view v-else class="state-page invalid-page">
+      <view class="invalid-visual">
+        <image src="/static/tabbar/惊讶.png" mode="aspectFit" />
+      </view>
+      <text class="state-title">这份邀请暂时打不开</text>
+      <text class="state-copy">邀请可能已过期或被撤销，请让朋友重新生成</text>
+      <button class="action-btn primary-action state-action" @click="goManage">
+        返回我的清单
+      </button>
     </view>
   </view>
 </template>
 
 <style lang="scss" scoped>
 .invite-page {
-  padding: 32rpx;
-}
-
-.center {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 20rpx;
-  padding: 80rpx 24rpx;
+  min-height: 100vh;
+  padding: 28rpx 40rpx calc(32rpx + env(safe-area-inset-bottom));
+  background-color: $page-bg;
 }
 
-.hero-card {
+.invite-content {
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
-  gap: 16rpx;
-  padding: 56rpx 32rpx;
+  width: 100%;
+}
+
+.hero-visual {
+  position: relative;
+  width: 380rpx;
+  height: 236rpx;
+  margin: 10rpx auto 4rpx;
+}
+
+.buddy {
+  position: absolute;
+  bottom: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 190rpx;
+  height: 190rpx;
+  border-radius: 50%;
+  background-color: $card-bg;
+  box-shadow: 0 18rpx 46rpx rgba(55, 41, 26, 0.12);
+
+  image {
+    width: 170rpx;
+    height: 170rpx;
+  }
+}
+
+.buddy-left {
+  left: 22rpx;
+  transform: rotate(-8deg);
+}
+
+.buddy-right {
+  right: 22rpx;
+  transform: rotate(8deg);
+}
+
+.spark {
+  position: absolute;
+  z-index: 2;
+  color: $warning;
+}
+
+.spark-one {
+  top: 8rpx;
+  left: 176rpx;
+  font-size: 48rpx;
+  transform: rotate(12deg);
+}
+
+.spark-two {
+  top: 60rpx;
+  left: 188rpx;
+  font-size: 18rpx;
+}
+
+.eyebrow {
+  margin-top: 4rpx;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  background-color: rgba(255, 199, 39, 0.2);
+  color: $text-primary;
+  font-size: 22rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+}
+
+.hero-title {
+  margin-top: 18rpx;
+  color: $text-primary;
+  font-size: 52rpx;
+  font-weight: 800;
+  letter-spacing: -1rpx;
+  line-height: 1.18;
+}
+
+.hero-copy {
+  max-width: 590rpx;
+  margin-top: 14rpx;
+  color: $text-secondary;
+  font-size: 27rpx;
+  line-height: 1.55;
   text-align: center;
 }
 
-.emoji {
-  font-size: 72rpx;
-}
-
-.empty-image {
-  width: 120rpx;
-  height: 120rpx;
-  margin-bottom: 16rpx;
-}
-
-.title {
-  font-size: 40rpx;
-  font-weight: 700;
-  color: #37291a;
-}
-
-.muted {
-  font-size: 26rpx;
-  color: #6B6F73;
-}
-
-.entry-list {
-  width: 100%;
+.group-card {
   display: flex;
-  flex-direction: column;
-  gap: 20rpx;
-  margin-top: 16rpx;
+  align-items: center;
+  width: 100%;
+  margin-top: 32rpx;
+  padding: 26rpx 24rpx;
+  border: 1rpx solid rgba(54, 57, 59, 0.08);
+  border-radius: 28rpx;
+  background-color: $card-bg;
+  box-shadow: 0 14rpx 34rpx rgba(55, 41, 26, 0.08);
 }
 
-.btn-primary {
-  background-color: #36393B;
-  color: #FFFFFF;
-  border-radius: 14rpx;
-  border: none;
+.group-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84rpx;
+  height: 84rpx;
+  flex: none;
+  border-radius: 24rpx;
+  background-color: rgba(255, 199, 39, 0.22);
+}
+
+.group-icon {
+  font-size: 44rpx;
+}
+
+.group-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  margin-left: 20rpx;
+}
+
+.group-label {
+  color: $text-secondary;
+  font-size: 21rpx;
+}
+
+.group-name {
+  overflow: hidden;
+  margin-top: 4rpx;
+  color: $text-primary;
+  font-size: 32rpx;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-meta {
+  margin-top: 6rpx;
+  color: $text-secondary;
+  font-size: 22rpx;
+}
+
+.member-faces {
+  display: flex;
+  flex: none;
+  margin-left: 12rpx;
+
+  image {
+    width: 50rpx;
+    height: 50rpx;
+    border: 4rpx solid $card-bg;
+    border-radius: 50%;
+    background-color: $section-bg;
+
+    & + image {
+      margin-left: -16rpx;
+    }
+  }
+}
+
+.name-card {
+  width: 100%;
+  margin-top: 22rpx;
+  padding: 24rpx;
+  border-radius: 24rpx;
+  background-color: rgba(254, 252, 249, 0.72);
+}
+
+.name-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.name-label {
+  color: $text-primary;
+  font-size: 27rpx;
+  font-weight: 650;
+}
+
+.required-tag {
+  color: $text-secondary;
+  font-size: 20rpx;
+}
+
+.name-input {
+  width: 100%;
+  height: 84rpx;
+  margin-top: 16rpx;
+  padding: 0 22rpx;
+  border: 2rpx solid rgba(54, 57, 59, 0.16);
+  border-radius: 18rpx;
+  background-color: $card-bg;
+  color: $text-primary;
   font-size: 28rpx;
-  height: 72rpx;
-  line-height: 72rpx;
-  min-height: 72rpx;
-  padding: 0 28rpx;
+}
+
+.input-placeholder {
+  color: rgba(107, 111, 115, 0.62);
+}
+
+.name-tip {
+  display: block;
+  margin-top: 12rpx;
+  color: $text-secondary;
+  font-size: 21rpx;
+  line-height: 1.45;
+}
+
+.error {
+  display: block;
+  margin-top: 10rpx;
+  color: #b23a48;
+  font-size: 22rpx;
+}
+
+.invite-actions {
+  width: 100%;
+  padding-top: 30rpx;
+}
+
+.action-btn {
+  width: 100%;
+  margin: 0;
+  border: none;
+  font-size: 30rpx;
+  font-weight: 700;
 
   &::after {
     border: none;
   }
 }
 
-.join-box {
+.primary-action {
+  height: 96rpx;
+  border-radius: 48rpx;
+  background-color: $pink-primary;
+  color: #fff;
+  line-height: 96rpx;
+  box-shadow: 0 14rpx 28rpx rgba(54, 57, 59, 0.2);
+}
+
+.primary-action[disabled] {
+  color: rgba(255, 255, 255, 0.72);
+  opacity: 0.72;
+}
+
+.action-star {
+  margin-right: 12rpx;
+  color: $warning;
+}
+
+.secondary-action {
+  height: 84rpx;
+  margin-top: 18rpx;
+  border-radius: 42rpx;
+  background-color: rgba(254, 252, 249, 0.72);
+  color: $text-primary;
+  line-height: 84rpx;
+}
+
+.state-page {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 16rpx;
-  padding: 24rpx;
-  border-radius: 16rpx;
-  background-color: #F5F5F5;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 120rpx);
+  text-align: center;
 }
 
-.input {
-  height: 80rpx;
-  padding: 0 20rpx;
-  border-radius: 12rpx;
-  background-color: #FEF9FF;
-  border: 1rpx solid #36393B;
+.loading-orbit {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 24rpx;
 }
 
-.error {
-  color: #36393B;
-  font-size: 24rpx;
+.loading-dot {
+  width: 18rpx;
+  height: 18rpx;
+  border-radius: 50%;
+  background-color: $warning;
+  opacity: 1;
+}
+
+.loading-dot.delay {
+  opacity: 0.68;
+}
+
+.loading-dot.delay-more {
+  opacity: 0.36;
+}
+
+.invalid-visual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 220rpx;
+  height: 220rpx;
+  margin-bottom: 32rpx;
+  border-radius: 50%;
+  background-color: $card-bg;
+  box-shadow: 0 18rpx 46rpx rgba(55, 41, 26, 0.1);
+
+  image {
+    width: 190rpx;
+    height: 190rpx;
+  }
+}
+
+.state-title {
+  color: $text-primary;
+  font-size: 40rpx;
+  font-weight: 750;
+}
+
+.state-copy {
+  max-width: 540rpx;
+  margin-top: 16rpx;
+  color: $text-secondary;
+  font-size: 26rpx;
+  line-height: 1.55;
+}
+
+.state-action {
+  margin-top: 44rpx;
 }
 </style>

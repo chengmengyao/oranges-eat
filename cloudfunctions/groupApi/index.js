@@ -179,6 +179,7 @@ async function getPublicGroup(event) {
     name: group.name,
     memberCount,
     inviteStatus: 'valid',
+    alreadyMember: false,
   })
 }
 
@@ -319,7 +320,7 @@ async function buildGroupPreview(groupId, openId) {
   }
 }
 
-async function previewInvite(event) {
+async function previewInvite(event, openId) {
   const token = normalizeText(event.token, 128)
   const code = normalizeText(event.code, 20)
   if (!token && !code) return ok(null)
@@ -331,6 +332,7 @@ async function previewInvite(event) {
   const group = await findGroupById(invite.groupId)
   if (!isPublicReadableGroup(group)) return ok(null)
   const memberCount = await countActiveMembers(group._id)
+  const existing = await findMember(group._id, openId)
   return ok({
     publicId: group.publicId,
     name: group.name,
@@ -338,7 +340,7 @@ async function previewInvite(event) {
     inviteStatus: 'valid',
     inviteExpiresAt: invite.expiresAt,
     inviteRemainingUses: invite.maxUses - invite.usedCount,
-    alreadyMember: false,
+    alreadyMember: Boolean(existing),
   })
 }
 
