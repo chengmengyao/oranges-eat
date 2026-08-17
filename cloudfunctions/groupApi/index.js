@@ -15,6 +15,8 @@ const SHOPS = 'shops'
 
 const INVITE_DEFAULT_DAYS = 7
 const INVITE_DEFAULT_MAX_USES = 50
+// 服务端 where().update()/remove() 单次最多处理 1000 条记录
+const MAX_BATCH_WRITE = 1000
 
 const COLLECTION_NAMES = [GROUPS, MEMBERS, INVITES, SHOPS]
 let ensurePromise = null
@@ -442,6 +444,23 @@ async function acceptInvite(event, openId) {
   }
 }
 
+async function updateAllWhere(collection, where, data) {
+  // 单次最多处理 1000 条，不足 1000 条说明已全部处理完
+  for (;;) {
+    const res = await db.collection(collection).where(where).update({ data })
+    const updated = Number(res && res.stats && res.stats.updated) || 0
+    if (updated < MAX_BATCH_WRITE) break
+  }
+}
+
+async function removeAllWhere(collection, where) {
+  for (;;) {
+    const res = await db.collection(collection).where(where).remove()
+    const removed = Number(res && res.stats && res.stats.removed) || 0
+    if (removed < MAX_BATCH_WRITE) break
+  }
+}
+
 async function revokeInvite(event, openId) {
   const groupId = normalizeText(event.groupId, 64)
   if (!groupId) return fail('参数不完整', 'INVALID_PARAM')
@@ -449,10 +468,7 @@ async function revokeInvite(event, openId) {
   if (!member || member.role !== 'owner') {
     return fail('只有创建者可以撤销邀请', 'FORBIDDEN')
   }
-  await db
-    .collection(INVITES)
-    .where({ groupId, status: 'active' })
-    .update({ data: { status: 'revoked' } })
+  await updateAllWhere(INVITES, { groupId, status: 'active' }, { status: 'revoked' })
   return ok({ revoked: true })
 }
 
@@ -489,9 +505,9 @@ async function deleteGroup(event, openId) {
 
     // 先隐藏清单，再清理关联数据，最后删除清单文档。任何一步失败都可由创建者重试。
     await Promise.all([
-      db.collection(MEMBERS).where({ groupId }).remove(),
-      db.collection(INVITES).where({ groupId }).remove(),
-      db.collection(SHOPS).where({ groupId }).remove(),
+      removeAllWhere(MEMBERS, { groupId }),
+      removeAllWhere(INVITES, { groupId }),
+      removeAllWhere(SHOPS, { groupId }),
     ])
     await db.collection(GROUPS).doc(groupId).remove()
     return ok({ deleted: true })

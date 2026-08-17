@@ -72,6 +72,7 @@ const showGroupPicker = ref(false)
 const loading = ref(false)
 const loadedOnce = ref(false)
 const errorMsg = ref('')
+const loadFailed = ref(false)
 
 const selectedShop = ref<(ShopView | PublicShopView) | null>(null)
 const showDetail = ref(false)
@@ -194,12 +195,14 @@ async function loadShops() {
   if (!targetPublicId) {
     clearShopState()
     errorMsg.value = ''
+    loadFailed.value = false
     loading.value = false
     loadedOnce.value = true
     return
   }
   loading.value = true
   errorMsg.value = ''
+  loadFailed.value = false
   let loadedShops: (ShopView | PublicShopView)[] | null = null
   try {
     const list = await listPublicMapShops(targetPublicId)
@@ -212,6 +215,7 @@ async function loadShops() {
     if (seq !== shopRequestSeq || targetPublicId !== publicId.value) return
     clearShopState()
     errorMsg.value = err instanceof Error ? err.message : '加载失败'
+    loadFailed.value = true
     loadedOnce.value = true
   } finally {
     if (seq === shopRequestSeq) loading.value = false
@@ -380,7 +384,7 @@ onShow(() => {
     <view v-if="loading && !loadedOnce" class="center-loading">
       <text>加载店铺…</text>
     </view>
-    <view v-else-if="errorMsg && !loadedOnce" class="center-loading">
+    <view v-else-if="errorMsg && loadFailed" class="center-loading">
       <text>{{ errorMsg }}</text>
       <button class="retry-btn" @click="refresh">重试</button>
     </view>
