@@ -56,6 +56,7 @@ const form = ref({
 })
 const formError = ref('')
 const saving = ref(false)
+const createRequestId = ref('')
 
 const deletingId = ref('')
 
@@ -196,6 +197,7 @@ async function refresh() {
 function openCreate() {
   formMode.value = 'create'
   editingId.value = ''
+  createRequestId.value = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
   form.value = { name: '', category: 'restaurant', latitude: null, longitude: null, address: '', remark: '' }
   formError.value = ''
   showForm.value = true
@@ -251,7 +253,9 @@ async function saveForm() {
     const lat = form.value.latitude as number
     const lng = form.value.longitude as number
     if (formMode.value === 'create') {
-      const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+      // 保存失败后复用同一请求 ID，避免云函数已写入但响应丢失时重复创建。
+      const requestId = createRequestId.value || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+      createRequestId.value = requestId
       await createShop(groupId.value, {
         name,
         category: form.value.category,

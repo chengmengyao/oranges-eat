@@ -3,5 +3,5 @@ export interface CloudConfig {
 }
 
 export const env: CloudConfig = {
-  CLOUD_ENV_ID: 'cloudbase-d6g4nhuj3d8174165',
+  CLOUD_ENV_ID: (import.meta.env.VITE_CLOUD_ENV_ID || '').trim(),
 }

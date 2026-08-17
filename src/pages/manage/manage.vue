@@ -9,6 +9,7 @@ import {
   createInvite,
   createInviteQrCode,
   revokeInvite,
+  updateMyDisplayName,
   removeMember,
   deleteGroup,
   updateGroupName,
@@ -26,6 +27,7 @@ const currentGroup = ref<GroupView | null>(null)
 
 const createMode = ref(false)
 const groupName = ref('')
+const displayName = ref('')
 const creating = ref(false)
 
 const inviteToken = ref('')
@@ -41,6 +43,7 @@ const shareMessage = ref({ title: '', path: '' })
 
 const loadingMembers = ref(false)
 const removing = ref(false)
+const updatingMyName = ref(false)
 const deleting = ref(false)
 
 const cloudMissing = ref(!state.ready)
@@ -87,13 +90,18 @@ async function refresh() {
 
 async function handleCreate() {
   const gname = groupName.value.trim()
+  const myName = displayName.value.trim()
   if (!gname) {
     uni.showToast({ title: '请输入清单名称', icon: 'none' })
     return
   }
+  if (!myName) {
+    uni.showToast({ title: '请输入你的名称', icon: 'none' })
+    return
+  }
   creating.value = true
   try {
-    const res = await createGroup(gname)
+    const res = await createGroup(gname, myName)
     await loadGroups()
     store.setCurrentGroup(res.group.id)
     currentGroupId.value = res.group.id
@@ -106,6 +114,47 @@ async function handleCreate() {
   } finally {
     creating.value = false
   }
+}
+
+function openCreateMode() {
+  const self = members.value.find((member) => member.isSelf)
+  if (!displayName.value && self) displayName.value = self.displayName
+  groupName.value = ''
+  createMode.value = true
+}
+
+function confirmEditMyName(member: MemberView) {
+  uni.showModal({
+    title: '修改我的名称',
+    editable: true,
+    placeholderText: member.displayName,
+    confirmText: '保存',
+    confirmColor: '#36393B',
+    success: async (res) => {
+      if (!res.confirm || !currentGroupId.value) return
+      const name = (res.content || '').trim()
+      if (!name) {
+        uni.showToast({ title: '请输入你的名称', icon: 'none' })
+        return
+      }
+      if (name.length > 20) {
+        uni.showToast({ title: '名称不能超过 20 字', icon: 'none' })
+        return
+      }
+      if (name === member.displayName) return
+      updatingMyName.value = true
+      try {
+        await updateMyDisplayName(currentGroupId.value, name)
+        displayName.value = name
+        await loadMembers()
+        uni.showToast({ title: '已修改', icon: 'success' })
+      } catch (err) {
+        uni.showToast({ title: err instanceof Error ? err.message : '修改失败', icon: 'none' })
+      } finally {
+        updatingMyName.value = false
+      }
+    },
+  })
 }
 
 function switchGroup(id: string) {
@@ -311,7 +360,7 @@ onShow(() => {
       <image class="empty-image" src="/static/tabbar/调皮.png" mode="aspectFit" />
       <text class="empty-title">创建你的第一份共享清单</text>
       <text class="muted">邀请朋友一起添加想吃的店</text>
-      <button class="btn-primary" @click="createMode = true">开始创建</button>
+      <button class="btn-primary" @click="openCreateMode">开始创建</button>
     </view>
 
     <view v-else-if="groups.length === 0 && !createMode && recentPublicGroup" class="card empty-card">
@@ -319,12 +368,14 @@ onShow(() => {
       <text class="empty-title">{{ recentPublicGroup.name }}</text>
       <text class="muted">当前为只读访客 · 加入清单后可添加店铺</text>
       <button class="btn-primary" @click="viewPublicMap">查看公开地图</button>
-      <button class="btn-plain" @click="createMode = true">创建自己的清单</button>
+      <button class="btn-plain" @click="openCreateMode">创建自己的清单</button>
     </view>
 
     <view v-else-if="createMode" class="card">
       <text class="section-title">创建共享清单</text>
       <input v-model="groupName" class="input" placeholder="清单名称（1-30 字）" maxlength="30" />
+      <input v-model="displayName" class="input" placeholder="你的名称（1-20 字）" maxlength="20" />
+      <text class="muted">名称仅清单成员可见，用于成员列表和店铺署名</text>
       <view class="row-gap">
         <button class="btn-plain" @click="createMode = false">取消</button>
         <button class="btn-primary" :loading="creating" :disabled="creating" @click="handleCreate">
@@ -368,7 +419,7 @@ onShow(() => {
             <text v-if="g.id === currentGroupId" class="check">✓</text>
           </view>
         </view>
-        <button class="btn-plain create-link" @click="createMode = true">+ 创建新清单</button>
+        <button class="btn-plain create-link" @click="openCreateMode">+ 创建新清单</button>
       </view>
 
       <view v-if="currentGroup" class="card">
@@ -441,7 +492,15 @@ onShow(() => {
               <text v-if="m.isSelf" class="tag self">我</text>
             </view>
             <button
-              v-if="currentGroup?.isOwner && !m.isSelf && m.role !== 'owner'"
+              v-if="m.isSelf"
+              class="edit-btn"
+              :disabled="updatingMyName"
+              @click="confirmEditMyName(m)"
+            >
+              修改我的名称
+            </button>
+            <button
+              v-else-if="currentGroup?.isOwner && m.role !== 'owner'"
               class="remove-btn"
               :disabled="removing"
               @click="confirmRemove(m)"

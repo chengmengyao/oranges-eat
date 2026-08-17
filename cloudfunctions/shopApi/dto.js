@@ -19,15 +19,6 @@ function toPublicShopView(shop) {
   }
 }
 
-// 聚合 DTO（未选择清单时的全量地图）：附加上来源清单信息
-function toPublicShopViewWithGroup(shop, group) {
-  return {
-    ...toPublicShopView(shop),
-    groupId: group._id,
-    groupName: group.name,
-  }
-}
-
 // 成员 DTO：含添加者名称与权限标记
 function toShopView(shop, member) {
   const isOwner = Boolean(member && member.role === 'owner')
@@ -65,7 +56,6 @@ function hasNoInternalFields(anyView) {
 module.exports = {
   SHOP_CATEGORIES,
   toPublicShopView,
-  toPublicShopViewWithGroup,
   toShopView,
   isPublicShopViewSafe,
   hasNoInternalFields,

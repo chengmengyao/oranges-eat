@@ -80,6 +80,8 @@ const showNearby = ref(false)
 const nearbyLoading = ref(false)
 
 let markerSeq = 0
+let shopRequestSeq = 0
+let refreshSeq = 0
 
 function isWeixinDevtools() {
   try {
@@ -130,6 +132,14 @@ function buildMarkerView(list: (ShopView | PublicShopView)[]) {
   }))
 }
 
+function clearShopState() {
+  shops.value = []
+  markers.value = []
+  markerMap.clear()
+  selectedShop.value = null
+  showDetail.value = false
+}
+
 async function fitShopMarkers(list: (ShopView | PublicShopView)[]) {
   if (list.length === 0) return
   await nextTick()
@@ -146,14 +156,15 @@ async function fitShopMarkers(list: (ShopView | PublicShopView)[]) {
   })
 }
 
-async function loadGroups() {
+async function loadGroups(seq: number) {
   let groups: GroupView[] = []
   try {
     groups = await listMyGroups()
-    store.setGroups(groups)
   } catch {
     groups = []
   }
+  if (seq !== refreshSeq) return false
+  store.setGroups(groups)
 
   const recent = store.getRecentPublicGroup()
   const options: (GroupView | { id: ''; publicId: string; name: string })[] = [...groups]
@@ -174,29 +185,45 @@ async function loadGroups() {
   if (selection.isMember && selection.group && selection.group.id !== store.state.currentGroupId) {
     store.setCurrentGroup(selection.group.id)
   }
+  return true
 }
 
 async function loadShops() {
-  if (!publicId.value) return
+  const seq = ++shopRequestSeq
+  const targetPublicId = publicId.value
+  if (!targetPublicId) {
+    clearShopState()
+    errorMsg.value = ''
+    loading.value = false
+    loadedOnce.value = true
+    return
+  }
   loading.value = true
   errorMsg.value = ''
   let loadedShops: (ShopView | PublicShopView)[] | null = null
   try {
-    const list = await listPublicMapShops(publicId.value)
+    const list = await listPublicMapShops(targetPublicId)
+    if (seq !== shopRequestSeq || targetPublicId !== publicId.value) return
     shops.value = list
     buildMarkerView(list)
     loadedShops = list
     loadedOnce.value = true
   } catch (err) {
+    if (seq !== shopRequestSeq || targetPublicId !== publicId.value) return
+    clearShopState()
     errorMsg.value = err instanceof Error ? err.message : '加载失败'
+    loadedOnce.value = true
   } finally {
-    loading.value = false
+    if (seq === shopRequestSeq) loading.value = false
   }
-  if (loadedShops) await fitShopMarkers(loadedShops)
+  if (loadedShops && seq === shopRequestSeq && targetPublicId === publicId.value) {
+    await fitShopMarkers(loadedShops)
+  }
 }
 
 async function refresh() {
-  await loadGroups()
+  const seq = ++refreshSeq
+  if (!(await loadGroups(seq)) || seq !== refreshSeq) return
   loadedOnce.value = true
   await loadShops()
 }
@@ -308,7 +335,12 @@ function openGroupPicker() {
 }
 
 function selectGroup(option: (typeof groupOptions.value)[number]) {
+  refreshSeq += 1
+  // 用户主动切换后，不应再被邀请链接携带的一次性 publicId 覆盖。
+  requestedPublicId.value = ''
   publicId.value = option.publicId
+  selectedShop.value = null
+  showDetail.value = false
   if (option.id) {
     currentGroup.value = option as GroupView
     isMember.value = true
@@ -327,7 +359,7 @@ function selectGroup(option: (typeof groupOptions.value)[number]) {
   }
   showGroupPicker.value = false
   loadedOnce.value = true
-  loadShops()
+  void loadShops()
 }
 
 onLoad((query) => {

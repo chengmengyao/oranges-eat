@@ -16,7 +16,7 @@ const SHOPS = 'shops'
 const INVITE_DEFAULT_DAYS = 7
 const INVITE_DEFAULT_MAX_USES = 50
 
-const COLLECTION_NAMES = [GROUPS, MEMBERS, INVITES]
+const COLLECTION_NAMES = [GROUPS, MEMBERS, INVITES, SHOPS]
 let ensurePromise = null
 
 async function ensureCollections() {
@@ -88,6 +88,15 @@ async function findMember(groupId, openId) {
     .limit(1)
     .get()
   return res.data[0] || null
+}
+
+async function findMemberRecord(groupId, openId) {
+  const res = await db
+    .collection(MEMBERS)
+    .doc(memberId(groupId, openId))
+    .get()
+    .catch(() => null)
+  return res && res.data ? res.data : null
 }
 
 async function findGroupById(groupId) {
@@ -186,8 +195,8 @@ async function getPublicGroup(event) {
 async function createGroup(event, openId) {
   const groupName = normalizeText(event.groupName, 30)
   if (!groupName) return fail('请输入清单名称', 'INVALID_PARAM')
-  // 创建者显示名称选填，缺省时使用清单名称
-  const displayName = normalizeText(event.displayName, 20) || groupName
+  // 新版客户端会要求填写；兼容未传该字段的旧客户端。
+  const displayName = normalizeText(event.displayName, 20) || '创建者'
 
   const publicId = randomHex(16)
   const now = Date.now()
@@ -362,8 +371,8 @@ async function acceptInvite(event, openId) {
   }
 
   const mid = memberId(groupId, openId)
-  const existing = await findMember(groupId, openId)
-  if (existing) {
+  const existingRecord = await findMemberRecord(groupId, openId)
+  if (existingRecord && existingRecord.status === 'active') {
     // 幂等：已是成员直接返回，不重复计数
     const preview = await buildGroupPreview(groupId, openId)
     return ok({ ...preview, alreadyMember: true, duplicated: true })
@@ -382,25 +391,32 @@ async function acceptInvite(event, openId) {
       return fail('邀请无效或已过期', 'INVITE_INVALID')
     }
 
-    const memberCount = await countActiveMembers(groupId)
-    if (memberCount >= freshInvite.maxUses) {
-      await transaction.rollback().catch(() => {})
-      return fail('邀请人数已满', 'INVITE_FULL')
-    }
-
     const now = Date.now()
-    await transaction.collection(MEMBERS).add({
-      data: {
-        _id: mid,
-        groupId,
-        userOpenId: openId,
-        displayName,
-        role: 'member',
-        status: 'active',
-        joinedAt: now,
-        updatedAt: now,
-      },
-    })
+    if (existingRecord) {
+      // 被移除的成员保留了确定性 _id；重新激活原记录才能再次接受邀请。
+      await transaction.collection(MEMBERS).doc(mid).update({
+        data: {
+          displayName,
+          role: 'member',
+          status: 'active',
+          joinedAt: now,
+          updatedAt: now,
+        },
+      })
+    } else {
+      await transaction.collection(MEMBERS).add({
+        data: {
+          _id: mid,
+          groupId,
+          userOpenId: openId,
+          displayName,
+          role: 'member',
+          status: 'active',
+          joinedAt: now,
+          updatedAt: now,
+        },
+      })
+    }
     await transaction
       .collection(INVITES)
       .doc(invite._id)
@@ -415,6 +431,12 @@ async function acceptInvite(event, openId) {
     return ok({ ...preview, duplicated: false })
   } catch (err) {
     await transaction.rollback().catch(() => {})
+    // 两次并发接受邀请时，另一请求可能已经成功；此时按幂等成功返回。
+    const activeMember = await findMember(groupId, openId).catch(() => null)
+    if (activeMember) {
+      const preview = await buildGroupPreview(groupId, openId)
+      return ok({ ...preview, alreadyMember: true, duplicated: true })
+    }
     console.error('acceptInvite failed', sanitizeForLog())
     return fail('加入失败，请重试', 'ACCEPT_FAILED')
   }
@@ -446,21 +468,37 @@ async function deleteGroup(event, openId) {
   const groupId = normalizeText(event.groupId, 64)
   if (!groupId) return fail('参数不完整', 'INVALID_PARAM')
 
-  const member = await findMember(groupId, openId)
-  if (!member || member.role !== 'owner') {
-    return fail('只有创建者可以删除清单', 'FORBIDDEN')
-  }
   const group = await findGroupById(groupId)
   if (!group) return fail('清单不存在', 'GROUP_NOT_FOUND')
 
-  // 级联删除：groups 文档 + 全部成员、邀请、店铺
-  await Promise.all([
-    db.collection(GROUPS).doc(groupId).remove().catch(() => {}),
-    db.collection(MEMBERS).where({ groupId }).remove().catch(() => {}),
-    db.collection(INVITES).where({ groupId }).remove().catch(() => {}),
-    db.collection(SHOPS).where({ groupId }).remove().catch(() => {}),
-  ])
-  return ok({ deleted: true })
+  const isResumingOwner = group.status === 'deleting' && group.ownerOpenId === openId
+  if (!isResumingOwner) {
+    const member = await findMember(groupId, openId)
+    if (!member || member.role !== 'owner') {
+      return fail('只有创建者可以删除清单', 'FORBIDDEN')
+    }
+  }
+
+  try {
+    if (group.status !== 'deleting') {
+      await db
+        .collection(GROUPS)
+        .doc(groupId)
+        .update({ data: { status: 'deleting', updatedAt: Date.now() } })
+    }
+
+    // 先隐藏清单，再清理关联数据，最后删除清单文档。任何一步失败都可由创建者重试。
+    await Promise.all([
+      db.collection(MEMBERS).where({ groupId }).remove(),
+      db.collection(INVITES).where({ groupId }).remove(),
+      db.collection(SHOPS).where({ groupId }).remove(),
+    ])
+    await db.collection(GROUPS).doc(groupId).remove()
+    return ok({ deleted: true })
+  } catch (err) {
+    console.error('deleteGroup failed', sanitizeForLog())
+    return fail('删除未完成，请重试', 'DELETE_FAILED')
+  }
 }
 
 async function createInviteQrCode(event, openId) {
@@ -541,6 +579,35 @@ async function listMembers(event, openId) {
   return ok(res.data.map((m) => toMemberView(m, openId)))
 }
 
+async function updateMyDisplayName(event, openId) {
+  const groupId = normalizeText(event.groupId, 64)
+  const displayName = normalizeText(event.displayName, 20)
+  if (!groupId || !displayName) return fail('参数不完整', 'INVALID_PARAM')
+
+  const member = await findMember(groupId, openId)
+  if (!member) return fail('未加入该清单', 'FORBIDDEN')
+
+  const now = Date.now()
+  try {
+    // 两个更新都是幂等的；任一步失败后，客户端可以使用同一名称安全重试。
+    await db
+      .collection(MEMBERS)
+      .doc(member._id)
+      .update({ data: { displayName, updatedAt: now } })
+    const shopUpdate = await db
+      .collection(SHOPS)
+      .where({ groupId, createdByOpenId: openId })
+      .update({ data: { createdByName: displayName } })
+    return ok({
+      displayName,
+      updatedShops: Number(shopUpdate && shopUpdate.stats && shopUpdate.stats.updated) || 0,
+    })
+  } catch (err) {
+    console.error('updateMyDisplayName failed', sanitizeForLog())
+    return fail('修改名称失败，请重试', 'UPDATE_NAME_FAILED')
+  }
+}
+
 async function removeMember(event, openId) {
   const groupId = normalizeText(event.groupId, 64)
   const targetMemberId = normalizeText(event.memberId, 64)
@@ -579,6 +646,7 @@ const actions = {
   revokeInvite,
   createInviteQrCode,
   listMembers,
+  updateMyDisplayName,
   removeMember,
   deleteGroup,
 }

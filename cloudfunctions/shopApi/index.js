@@ -1,7 +1,8 @@
 const cloud = require('wx-server-sdk')
 const crypto = require('crypto')
-const { toPublicShopView, toPublicShopViewWithGroup, toShopView } = require('./dto')
+const { toPublicShopView, toShopView } = require('./dto')
 const { SHOP_CATEGORIES, validateShopInput } = require('./shop-input')
+const { shopRequestDocumentId } = require('./shop-request')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -171,29 +172,6 @@ async function listPublicMapShops(event) {
   return ok(res.data.map(toPublicShopView))
 }
 
-async function listAllPublicMapShops() {
-  const groupRes = await db
-    .collection(GROUPS)
-    .where({ visibility: 'public_read', status: 'active' })
-    .orderBy('updatedAt', 'desc')
-    .limit(100)
-    .get()
-  const groups = groupRes.data
-  const all = []
-  for (const group of groups) {
-    const res = await db
-      .collection(SHOPS)
-      .where({ groupId: group._id })
-      .orderBy('updatedAt', 'desc')
-      .limit(MAX_SHOPS_PER_GROUP)
-      .get()
-    for (const shop of res.data) {
-      all.push(toPublicShopViewWithGroup(shop, group))
-    }
-  }
-  return ok(all)
-}
-
 async function listMemberShops(event, openId) {
   const groupId = normalizeText(event.groupId, 64)
   if (!groupId) return fail('参数不完整', 'INVALID_PARAM')
@@ -258,9 +236,27 @@ async function createShop(event, openId) {
     updatedAt: now,
   }
 
-  const res = await db.collection(SHOPS).add({ data: shopDoc })
-  const created = { ...shopDoc, _id: res._id }
-  return ok(toShopView(created, member))
+  const deterministicId = shopRequestDocumentId(groupId, requestId)
+  try {
+    const data = deterministicId ? { ...shopDoc, _id: deterministicId } : shopDoc
+    const res = await db.collection(SHOPS).add({ data })
+    const created = { ...shopDoc, _id: deterministicId || res._id }
+    return ok(toShopView(created, member))
+  } catch (err) {
+    // 并发的同一请求只能有一个固定 _id 写入成功；其余请求返回同一店铺。
+    if (deterministicId) {
+      const existing = await db.collection(SHOPS).doc(deterministicId).get().catch(() => null)
+      if (
+        existing &&
+        existing.data &&
+        existing.data.groupId === groupId &&
+        existing.data.requestId === requestId
+      ) {
+        return ok(toShopView(existing.data, member))
+      }
+    }
+    throw err
+  }
 }
 
 async function updateShop(event, openId) {
@@ -348,7 +344,6 @@ async function deleteShop(event, openId) {
 const actions = {
   listPublicShops,
   listPublicMapShops,
-  listAllPublicMapShops,
   listMemberShops,
   createShop,
   updateShop,

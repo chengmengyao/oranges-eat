@@ -19,7 +19,7 @@ export function initCloud(): CloudInitState {
   if (!env.CLOUD_ENV_ID) {
     initState = {
       ready: false,
-      message: '云环境未配置：请在 src/config/env.ts 填写 CLOUD_ENV_ID 后重新进入。',
+      message: '云环境未配置：请在对应模式的 .env 文件填写 VITE_CLOUD_ENV_ID 后重新编译。',
     }
     return getCloudInitState()
   }

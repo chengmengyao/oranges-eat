@@ -17,7 +17,7 @@ cloudfunctions/
 ├── groupApi/      # 清单、成员、邀请与分享鉴权
 └── shopApi/       # 共享店铺查询与 CRUD 鉴权
 src/
-├── config/env.ts  # 仅 CLOUD_ENV_ID，无地图 Key
+├── config/env.ts  # 从 Vite 环境变量读取云环境 ID
 ├── pages/
 │   ├── index/     # 地图页
 │   ├── food/      # 美食列表与编辑页
@@ -37,7 +37,7 @@ scripts/gen-icons.mjs  # SVG → PNG 生成脚本
 npm install
 npm run gen:icons    # 重新生成 tabBar / marker PNG（可重复执行）
 npm run type-check   # 零 TypeScript 错误
-npm run test         # 51 个单元测试
+npm run test         # 运行单元测试
 npm run build:mp-weixin   # 生产构建，并为“上传所有文件”安装本地云函数依赖
 ```
 
@@ -63,7 +63,7 @@ npm run build:mp-weixin   # 生产构建，并为“上传所有文件”安装�
 ## 配置
 
 1. `src/manifest.json` → `mp-weixin.appid` 填入正式 AppID。
-2. `src/config/env.ts` → `CLOUD_ENV_ID` 填入云环境 ID。
+2. 生产构建从 `.env.production` 读取正式云环境 ID；开发调试先将 `.env.example` 复制为 `.env.development.local`，再填写独立的开发云环境 ID。`.env.development` 默认留空，防止调试数据误写入生产环境。
 3. 微信后台申请 `getLocation`、`chooseLocation` 接口权限。
 4. 配置「用户隐私保护指引」，说明位置信息用于显示当前位置、计算直线距离和地图选点。
 

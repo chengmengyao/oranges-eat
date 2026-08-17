@@ -32,17 +32,6 @@ export async function listPublicMapShops(
   })
 }
 
-export interface GroupTaggedShopView extends PublicShopView {
-  groupId: string
-  groupName: string
-}
-
-export async function listAllPublicMapShops(): Promise<GroupTaggedShopView[]> {
-  return callFunction('shopApi', {
-    action: 'listAllPublicMapShops',
-  })
-}
-
 export async function listMemberShops(
   groupId: string,
   cursor?: string,

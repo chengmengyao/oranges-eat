@@ -32,10 +32,14 @@ export async function getPublicGroup(
   return callFunction('groupApi', { action: 'getPublicGroup', publicId })
 }
 
-export async function createGroup(groupName: string): Promise<CreateGroupResult> {
+export async function createGroup(
+  groupName: string,
+  displayName: string,
+): Promise<CreateGroupResult> {
   return callFunction('groupApi', {
     action: 'createGroup',
     groupName,
+    displayName,
   })
 }
 
@@ -101,6 +105,17 @@ export async function listMembers(
   groupId: string,
 ): Promise<MemberView[]> {
   return callFunction('groupApi', { action: 'listMembers', groupId })
+}
+
+export async function updateMyDisplayName(
+  groupId: string,
+  displayName: string,
+): Promise<{ displayName: string; updatedShops: number }> {
+  return callFunction('groupApi', {
+    action: 'updateMyDisplayName',
+    groupId,
+    displayName,
+  })
 }
 
 export async function removeMember(
