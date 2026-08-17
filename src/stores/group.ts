@@ -13,12 +13,14 @@ interface GroupState {
   groups: GroupView[]
   currentGroupId: string
   loaded: boolean
+  lastAddedShopId: string
 }
 
 const state = reactive<GroupState>({
   groups: [],
   currentGroupId: '',
   loaded: false,
+  lastAddedShopId: '',
 })
 
 export function useGroupStore() {
@@ -68,6 +70,14 @@ export function useGroupStore() {
     uni.removeStorageSync(RECENT_PUBLIC_GROUP_KEY)
   }
 
+  function setLastAddedShopId(id: string) {
+    state.lastAddedShopId = id
+  }
+
+  function clearLastAddedShopId() {
+    state.lastAddedShopId = ''
+  }
+
   function reset() {
     state.groups = []
     state.currentGroupId = ''
@@ -84,6 +94,8 @@ export function useGroupStore() {
     setRecentPublicGroup,
     getRecentPublicGroup,
     clearRecentPublicGroup,
+    setLastAddedShopId,
+    clearLastAddedShopId,
     reset,
   }
 }

@@ -42,7 +42,7 @@ interface Marker {
     borderRadius: number
     bgColor: string
     padding: number
-    display: 'ALWAYS'
+    display: 'BY_CLICK' | 'ALWAYS'
   }
 }
 
@@ -73,12 +73,15 @@ const loading = ref(false)
 const loadedOnce = ref(false)
 const errorMsg = ref('')
 const loadFailed = ref(false)
+const groupsSettled = ref(false)
+const shopsSettled = ref(false)
 
 const selectedShop = ref<(ShopView | PublicShopView) | null>(null)
 const showDetail = ref(false)
 
 const showNearby = ref(false)
-const nearbyLoading = ref(false)
+
+const highlightShopId = ref('')
 
 let markerSeq = 0
 let shopRequestSeq = 0
@@ -114,23 +117,39 @@ function buildMarkerView(list: (ShopView | PublicShopView)[]) {
   markerSeq += built.length
   markerMap.clear()
   mapping.forEach((shopId, id) => markerMap.set(id, shopId))
-  markers.value = built.map((m) => ({
-    id: m.id,
-    latitude: m.latitude,
-    longitude: m.longitude,
-    iconPath: m.iconPath,
-    width: MARKER_WIDTH,
-    height: MARKER_HEIGHT,
-    callout: {
-      content: (list.find((s) => s.id === m.shopId)?.name) || '',
-      color: '#37291a',
-      fontSize: 12,
-      borderRadius: 6,
-      bgColor: '#FEF9FF',
-      padding: 6,
-      display: 'ALWAYS' as const,
-    },
-  }))
+  markers.value = built.map((m) => {
+    const highlighted = m.shopId === highlightShopId.value
+    return {
+      id: m.id,
+      latitude: m.latitude,
+      longitude: m.longitude,
+      iconPath: m.iconPath,
+      width: highlighted ? MARKER_WIDTH + 12 : MARKER_WIDTH,
+      height: highlighted ? MARKER_HEIGHT + 12 : MARKER_HEIGHT,
+      callout: {
+        content: (list.find((s) => s.id === m.shopId)?.name) || '',
+        color: '#37291a',
+        fontSize: 12,
+        borderRadius: 6,
+        bgColor: '#FEF9FF',
+        padding: 6,
+        display: 'BY_CLICK' as const,
+      },
+    }
+  })
+}
+
+function checkNewShopHighlight() {
+  const id = store.state.lastAddedShopId
+  if (!id) return
+  store.clearLastAddedShopId()
+  if (!shops.value.some((s) => s.id === id)) return
+  highlightShopId.value = id
+  buildMarkerView(shops.value)
+  setTimeout(() => {
+    highlightShopId.value = ''
+    if (shops.value.length > 0) buildMarkerView(shops.value)
+  }, 1600)
 }
 
 function clearShopState() {
@@ -139,6 +158,7 @@ function clearShopState() {
   markerMap.clear()
   selectedShop.value = null
   showDetail.value = false
+  highlightShopId.value = ''
 }
 
 async function fitShopMarkers(list: (ShopView | PublicShopView)[]) {
@@ -162,9 +182,16 @@ async function loadGroups(seq: number) {
   try {
     groups = await listMyGroups()
   } catch {
-    groups = []
+    // 请求失败：无法确认真实清单，不误判为"没有清单"，保留旧状态
+    if (seq === refreshSeq) {
+      errorMsg.value = '加载失败，请重试'
+      loadFailed.value = true
+      loadedOnce.value = true
+    }
+    return false
   }
   if (seq !== refreshSeq) return false
+  groupsSettled.value = true
   store.setGroups(groups)
 
   const recent = store.getRecentPublicGroup()
@@ -198,6 +225,7 @@ async function loadShops() {
     loadFailed.value = false
     loading.value = false
     loadedOnce.value = true
+    shopsSettled.value = true
     return
   }
   loading.value = true
@@ -209,14 +237,17 @@ async function loadShops() {
     if (seq !== shopRequestSeq || targetPublicId !== publicId.value) return
     shops.value = list
     buildMarkerView(list)
+    checkNewShopHighlight()
     loadedShops = list
     loadedOnce.value = true
+    shopsSettled.value = true
   } catch (err) {
     if (seq !== shopRequestSeq || targetPublicId !== publicId.value) return
     clearShopState()
     errorMsg.value = err instanceof Error ? err.message : '加载失败'
     loadFailed.value = true
     loadedOnce.value = true
+    shopsSettled.value = true
   } finally {
     if (seq === shopRequestSeq) loading.value = false
   }
@@ -289,11 +320,6 @@ function onTapMap() {
 
 function openNearby() {
   showNearby.value = true
-  if (!hasPosition.value) return
-  nearbyLoading.value = true
-  setTimeout(() => {
-    nearbyLoading.value = false
-  }, 300)
 }
 
 function formattedDistance(s: ShopView | PublicShopView): string {
@@ -305,6 +331,21 @@ const nearbyList = computed(() => {
   if (!currentPosition.value) return []
   return sortByDistance(currentPosition.value, shops.value)
 })
+
+const showEmptyState = computed(() => {
+  return (
+    loadedOnce.value &&
+    groupsSettled.value &&
+    shopsSettled.value &&
+    !errorMsg.value &&
+    shops.value.length === 0 &&
+    Boolean(currentGroup.value)
+  )
+})
+
+function goAddShop() {
+  uni.switchTab({ url: '/pages/food/food' })
+}
 
 function navigate() {
   const s = selectedShop.value
@@ -342,9 +383,11 @@ function selectGroup(option: (typeof groupOptions.value)[number]) {
   refreshSeq += 1
   // 用户主动切换后，不应再被邀请链接携带的一次性 publicId 覆盖。
   requestedPublicId.value = ''
+  groupsSettled.value = true
   publicId.value = option.publicId
   selectedShop.value = null
   showDetail.value = false
+  highlightShopId.value = ''
   if (option.id) {
     currentGroup.value = option as GroupView
     isMember.value = true
@@ -437,9 +480,19 @@ onShow(() => {
       </view>
     </view>
 
-    <view v-if="!currentGroup" class="no-group-tip" @click="goManage">
+    <view v-if="!currentGroup && groupsSettled" class="no-group-tip" @click="goManage">
       <text class="tip-text">您还没有添加要共享的清单</text>
       <text class="tip-action">去添加 ›</text>
+    </view>
+
+    <view v-if="showEmptyState" class="empty-tip">
+      <image class="empty-icon" src="/static/tabbar/调皮.png" mode="aspectFit" />
+      <view class="empty-copy">
+        <text class="empty-text">清单里还没有店铺</text>
+        <text v-if="!isMember" class="empty-sub">快让朋友添加第一家好吃的吧</text>
+        <text v-else class="empty-sub">在地图上点亮第一站</text>
+      </view>
+      <text v-if="isMember" class="empty-action" @click="goAddShop">去添加 ›</text>
     </view>
 
     <view class="zoom-group">
@@ -490,7 +543,6 @@ onShow(() => {
           <text>尚未获取当前位置</text>
           <button class="retry-btn" @click="onGetLocation">获取位置</button>
         </view>
-        <view v-else-if="nearbyLoading" class="sheet-empty">计算中…</view>
         <view v-else-if="nearbyList.length === 0" class="sheet-empty">还没有店铺</view>
         <scroll-view v-else scroll-y class="nearby-list">
           <view
@@ -585,6 +637,52 @@ onShow(() => {
 }
 
 .tip-action {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #36393B;
+}
+
+.empty-tip {
+  position: absolute;
+  left: 16rpx;
+  right: 16rpx;
+  bottom: calc(160rpx + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  background-color: rgba(255, 255, 255, 0.95);
+  border: 1rpx solid #36393B;
+  border-radius: 999rpx;
+  padding: 12rpx 32rpx;
+  box-shadow: 0 4rpx 16rpx rgba(54, 57, 59, 0.10);
+}
+
+.empty-icon {
+  width: 56rpx;
+  height: 56rpx;
+  flex: none;
+}
+
+.empty-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2rpx;
+  flex: 1;
+  min-width: 0;
+}
+
+.empty-text {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #37291a;
+}
+
+.empty-sub {
+  font-size: 22rpx;
+  color: #6B6F73;
+}
+
+.empty-action {
   font-size: 26rpx;
   font-weight: 600;
   color: #36393B;

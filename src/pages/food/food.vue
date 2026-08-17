@@ -256,7 +256,7 @@ async function saveForm() {
       // 保存失败后复用同一请求 ID，避免云函数已写入但响应丢失时重复创建。
       const requestId = createRequestId.value || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
       createRequestId.value = requestId
-      await createShop(groupId.value, {
+      const created = await createShop(groupId.value, {
         name,
         category: form.value.category,
         latitude: lat,
@@ -265,6 +265,7 @@ async function saveForm() {
         remark,
         requestId,
       })
+      store.setLastAddedShopId(created.id)
       uni.showToast({ title: '已添加', icon: 'success' })
     } else {
       const target = shops.value.find((s) => s.id === editingId.value) as ShopView | undefined
