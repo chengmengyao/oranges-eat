@@ -3,6 +3,7 @@ const crypto = require('crypto')
 const { toPublicShopView, toShopView } = require('./dto')
 const { SHOP_CATEGORIES, validateShopInput } = require('./shop-input')
 const { shopRequestDocumentId } = require('./shop-request')
+const { MAX_SHOPS_PER_GROUP, evaluateMoveTarget, resolveFolderGroupId } = require('./move-target')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -11,12 +12,12 @@ const _ = db.command
 const GROUPS = 'groups'
 const MEMBERS = 'members'
 const SHOPS = 'shops'
+const FOLDERS = 'folders'
 
-const MAX_SHOPS_PER_GROUP = 200
 const MAX_PAGE_SIZE = 20
 const MAX_REQUEST_ID_LENGTH = 64
 
-const COLLECTION_NAMES = [GROUPS, MEMBERS, SHOPS]
+const COLLECTION_NAMES = [GROUPS, MEMBERS, SHOPS, FOLDERS]
 let ensurePromise = null
 
 async function ensureCollections() {
@@ -81,12 +82,32 @@ function isPublicReadableGroup(group) {
   return Boolean(group && group.visibility === 'public_read' && group.status === 'active')
 }
 
-function buildShopQuery(groupId, category) {
+function buildShopQuery(groupId, category, folderId) {
   const where = { groupId }
   if (category && category !== 'all' && SHOP_CATEGORIES.includes(category)) {
     where.category = category
   }
+  if (folderId === 'none') {
+    where.folderId = _.eq(null)
+  } else if (folderId && folderId !== 'all') {
+    where.folderId = folderId
+  }
   return where
+}
+
+async function findFolderById(folderId) {
+  const res = await db.collection(FOLDERS).doc(folderId).get().catch(() => null)
+  return res && res.data ? res.data : null
+}
+
+async function validateFolderOwnership(groupId, folderId) {
+  if (!folderId) return null
+  if (folderId === 'all' || folderId === 'none') return null
+  const folder = await findFolderById(folderId)
+  if (!folder || folder.groupId !== groupId) {
+    return { ok: false, error: '所选城市不存在或不属于该清单', code: 'FOLDER_NOT_FOUND' }
+  }
+  return null
 }
 
 function parseCursor(cursor) {
@@ -146,7 +167,8 @@ async function listPublicShops(event) {
     return fail('清单不存在或不可访问', 'GROUP_NOT_FOUND')
   }
   const category = normalizeText(event.category, 20)
-  const where = buildShopQuery(group._id, category)
+  const folderId = normalizeText(event.folderId, 64)
+  const where = buildShopQuery(group._id, category, folderId)
   const result = await queryPagedShops(where, event.cursor, event.limit)
   return ok({
     shops: result.shops.map(toPublicShopView),
@@ -162,7 +184,8 @@ async function listPublicMapShops(event) {
   if (!isPublicReadableGroup(group)) {
     return fail('清单不存在或不可访问', 'GROUP_NOT_FOUND')
   }
-  const where = { groupId: group._id }
+  const folderId = normalizeText(event.folderId, 64)
+  const where = buildShopQuery(group._id, undefined, folderId)
   const res = await db
     .collection(SHOPS)
     .where(where)
@@ -178,7 +201,8 @@ async function listMemberShops(event, openId) {
   const member = await findMember(groupId, openId)
   if (!member) return fail('未加入该清单', 'FORBIDDEN')
   const category = normalizeText(event.category, 20)
-  const where = buildShopQuery(groupId, category)
+  const folderId = normalizeText(event.folderId, 64)
+  const where = buildShopQuery(groupId, category, folderId)
   const result = await queryPagedShops(where, event.cursor, event.limit)
   return ok({
     shops: result.shops.map((s) => toShopView(s, member)),
@@ -201,6 +225,9 @@ async function createShop(event, openId) {
   if (!validation.ok) return validation
   const input = validation.data
 
+  const folderError = await validateFolderOwnership(groupId, input.folderId)
+  if (folderError) return folderError
+
   // 幂等：同一请求 ID 不重复写入
   const requestId = normalizeText(event.requestId, MAX_REQUEST_ID_LENGTH)
   if (requestId) {
@@ -222,6 +249,7 @@ async function createShop(event, openId) {
   const now = Date.now()
   const shopDoc = {
     groupId,
+    folderId: input.folderId || null,
     requestId: requestId || null,
     name: input.name,
     category: input.category,
@@ -262,6 +290,7 @@ async function createShop(event, openId) {
 async function updateShop(event, openId) {
   const groupId = normalizeText(event.groupId, 64)
   const shopId = normalizeText(event.shopId, 64)
+  const targetGroupId = normalizeText(event.targetGroupId, 64)
   if (!groupId || !shopId) return fail('参数不完整', 'INVALID_PARAM')
 
   const member = await findMember(groupId, openId)
@@ -282,6 +311,29 @@ async function updateShop(event, openId) {
   const validation = validateShopInput(event)
   if (!validation.ok) return validation
   const input = validation.data
+
+  const folderGroupId = resolveFolderGroupId({ targetGroupId, sourceGroupId: groupId })
+  const folderError = await validateFolderOwnership(folderGroupId, input.folderId)
+  if (folderError) return folderError
+
+  // 移动店铺到其他清单：校验目标清单可接收
+  let targetMember = null
+  if (targetGroupId && targetGroupId !== groupId) {
+    const [group, tMember, countRes] = await Promise.all([
+      findGroupById(targetGroupId),
+      findMember(targetGroupId, openId),
+      db.collection(SHOPS).where({ groupId: targetGroupId }).count(),
+    ])
+    const verdict = evaluateMoveTarget({
+      targetGroupId,
+      sourceGroupId: groupId,
+      group,
+      member: tMember,
+      targetShopCount: Number(countRes && countRes.total) || 0,
+    })
+    if (!verdict.ok) return verdict
+    targetMember = verdict.data.targetMember
+  }
 
   // 乐观并发
   const expectedUpdatedAt = Number(event.expectedUpdatedAt)
@@ -304,6 +356,8 @@ async function updateShop(event, openId) {
         longitude: input.longitude,
         address: input.address,
         remark: input.remark,
+        folderId: input.folderId || null,
+        groupId: targetGroupId || groupId,
         updatedByOpenId: openId,
         updatedAt: now,
       },
@@ -311,8 +365,17 @@ async function updateShop(event, openId) {
   if (!updateRes.stats || updateRes.stats.updated !== 1) {
     return fail('店铺已被其他成员更新，请刷新后重新编辑', 'CONFLICT')
   }
-  const updated = { ...shop, ...input, updatedByOpenId: openId, updatedAt: now }
-  return ok(toShopView(updated, member))
+  const updated = {
+    ...shop,
+    ...input,
+    groupId: targetGroupId || groupId,
+    updatedByOpenId: openId,
+    updatedAt: now,
+  }
+  return ok({
+    ...toShopView(updated, targetMember || member),
+    moved: Boolean(targetGroupId && targetGroupId !== groupId),
+  })
 }
 
 async function deleteShop(event, openId) {

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
-import { onLoad, onShow } from '@dcloudio/uni-app'
+import { computed, nextTick, ref, watch } from 'vue'
+import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import type { PublicShopView, ShopView } from '@/types/shop'
-import type { GroupView } from '@/types/group'
+import type { FolderView, GroupView } from '@/types/group'
 import { listPublicMapShops } from '@/services/shop'
-import { listMyGroups } from '@/services/group'
+import { listMyGroups, listPublicFolders } from '@/services/group'
 import { useGroupStore } from '@/stores/group'
 import { CATEGORY_LABELS, SHOP_CATEGORIES } from '@/constants/shop'
 import {
@@ -16,6 +16,7 @@ import {
 } from '@/utils/location'
 import { formatDistance, haversineDistance, sortByDistance } from '@/utils/geo'
 import { resolveMapGroup } from '@/utils/map-group'
+import { hideLoading, showLoading } from '@/utils/global-loading'
 import {
   buildMarkers,
   findShopIdByMarker,
@@ -27,6 +28,11 @@ import {
 const store = useGroupStore()
 
 const MARKER_ICONS = MARKER_ICON_BY_CATEGORY
+
+const LEGEND_EMOJIS: Record<string, string> = {
+  restaurant: '🍝',
+  spot: '🎫',
+}
 
 interface Marker {
   id: number
@@ -67,7 +73,27 @@ const requestedPublicId = ref('')
 const isMember = ref(false)
 
 const groupOptions = ref<(GroupView | { id: ''; publicId: string; name: string })[]>([])
-const showGroupPicker = ref(false)
+const showLayerPicker = ref(false)
+
+const folders = ref<FolderView[]>([])
+const uncategorizedCount = ref(0)
+const folderFilter = ref('all')
+const loadingFolders = ref(false)
+
+const visibleShops = computed(() => {
+  if (folderFilter.value === 'all') return shops.value
+  if (folderFilter.value === 'none') {
+    return shops.value.filter((s) => !s.folderId)
+  }
+  return shops.value.filter((s) => s.folderId === folderFilter.value)
+})
+
+const currentFilterLabel = computed(() => {
+  if (folderFilter.value === 'all') return '全部'
+  if (folderFilter.value === 'none') return '未分类'
+  const f = folders.value.find((x) => x.id === folderFilter.value)
+  return f ? f.name : '全部'
+})
 
 const loading = ref(false)
 const loadedOnce = ref(false)
@@ -79,6 +105,15 @@ const shopsSettled = ref(false)
 const selectedShop = ref<(ShopView | PublicShopView) | null>(null)
 const showDetail = ref(false)
 
+const anyOverlayOpen = computed(() => showLayerPicker.value || showDetail.value)
+watch(anyOverlayOpen, (open) => {
+  if (open) {
+    uni.hideTabBar({ animation: false })
+  } else {
+    uni.showTabBar({ animation: false })
+  }
+})
+
 const showNearby = ref(false)
 
 const highlightShopId = ref('')
@@ -86,6 +121,8 @@ const highlightShopId = ref('')
 let markerSeq = 0
 let shopRequestSeq = 0
 let refreshSeq = 0
+let folderRequestSeq = 0
+let highlightTimer: ReturnType<typeof setTimeout> | null = null
 
 function isWeixinDevtools() {
   try {
@@ -145,10 +182,11 @@ function checkNewShopHighlight() {
   store.clearLastAddedShopId()
   if (!shops.value.some((s) => s.id === id)) return
   highlightShopId.value = id
-  buildMarkerView(shops.value)
-  setTimeout(() => {
+  buildMarkerView(visibleShops.value)
+  if (highlightTimer) clearTimeout(highlightTimer)
+  highlightTimer = setTimeout(() => {
     highlightShopId.value = ''
-    if (shops.value.length > 0) buildMarkerView(shops.value)
+    if (shops.value.length > 0) buildMarkerView(visibleShops.value)
   }, 1600)
 }
 
@@ -207,9 +245,16 @@ async function loadGroups(seq: number) {
     requestedPublicId.value,
     recent,
   )
+  const publicIdChanged = publicId.value !== selection.publicId
   currentGroup.value = selection.group
   publicId.value = selection.publicId
   isMember.value = selection.isMember
+  if (publicIdChanged) {
+    folderFilter.value = 'all'
+    folders.value = []
+    uncategorizedCount.value = 0
+    store.setFolders([])
+  }
   if (selection.isMember && selection.group && selection.group.id !== store.state.currentGroupId) {
     store.setCurrentGroup(selection.group.id)
   }
@@ -236,7 +281,7 @@ async function loadShops() {
     const list = await listPublicMapShops(targetPublicId)
     if (seq !== shopRequestSeq || targetPublicId !== publicId.value) return
     shops.value = list
-    buildMarkerView(list)
+    buildMarkerView(visibleShops.value)
     checkNewShopHighlight()
     loadedShops = list
     loadedOnce.value = true
@@ -252,15 +297,57 @@ async function loadShops() {
     if (seq === shopRequestSeq) loading.value = false
   }
   if (loadedShops && seq === shopRequestSeq && targetPublicId === publicId.value) {
-    await fitShopMarkers(loadedShops)
+    await fitShopMarkers(visibleShops.value)
   }
+}
+
+async function loadFolders() {
+  const seq = ++folderRequestSeq
+  const targetPublicId = publicId.value
+  if (!targetPublicId) {
+    folders.value = []
+    uncategorizedCount.value = 0
+    store.setFolders([])
+    return
+  }
+  loadingFolders.value = true
+  try {
+    const res = await listPublicFolders(targetPublicId)
+    if (seq !== folderRequestSeq || targetPublicId !== publicId.value) return
+    folders.value = res.folders
+    uncategorizedCount.value = res.uncategorizedCount
+    store.setFolders(folders.value)
+  } catch {
+    if (seq !== folderRequestSeq) return
+    folders.value = []
+    uncategorizedCount.value = 0
+  } finally {
+    if (seq === folderRequestSeq) loadingFolders.value = false
+  }
+}
+
+function onFolderFilterChange(value: string) {
+  if (folderFilter.value === value) return
+  folderFilter.value = value
+  selectedShop.value = null
+  showDetail.value = false
+  highlightShopId.value = ''
+  buildMarkerView(visibleShops.value)
+  void fitShopMarkers(visibleShops.value)
 }
 
 async function refresh() {
   const seq = ++refreshSeq
-  if (!(await loadGroups(seq)) || seq !== refreshSeq) return
-  loadedOnce.value = true
-  await loadShops()
+  const first = !loadedOnce.value
+  if (first) showLoading()
+  try {
+    if (!(await loadGroups(seq)) || seq !== refreshSeq) return
+    loadedOnce.value = true
+    await loadFolders()
+    await loadShops()
+  } finally {
+    if (seq === refreshSeq) hideLoading()
+  }
 }
 
 async function updateCurrentLocation(showFailureModal: boolean) {
@@ -329,7 +416,7 @@ function formattedDistance(s: ShopView | PublicShopView): string {
 
 const nearbyList = computed(() => {
   if (!currentPosition.value) return []
-  return sortByDistance(currentPosition.value, shops.value)
+  return sortByDistance(currentPosition.value, visibleShops.value)
 })
 
 const showEmptyState = computed(() => {
@@ -338,7 +425,7 @@ const showEmptyState = computed(() => {
     groupsSettled.value &&
     shopsSettled.value &&
     !errorMsg.value &&
-    shops.value.length === 0 &&
+    visibleShops.value.length === 0 &&
     Boolean(currentGroup.value)
   )
 })
@@ -376,42 +463,55 @@ function goManage() {
 }
 
 function openGroupPicker() {
-  showGroupPicker.value = true
+  showLayerPicker.value = true
 }
 
-function selectGroup(option: (typeof groupOptions.value)[number]) {
-  refreshSeq += 1
-  // 用户主动切换后，不应再被邀请链接携带的一次性 publicId 覆盖。
-  requestedPublicId.value = ''
-  groupsSettled.value = true
-  publicId.value = option.publicId
-  selectedShop.value = null
-  showDetail.value = false
-  highlightShopId.value = ''
-  if (option.id) {
-    currentGroup.value = option as GroupView
-    isMember.value = true
-    store.setCurrentGroup(option.id)
-  } else {
-    currentGroup.value = {
-      id: '',
-      publicId: option.publicId,
-      name: option.name,
-      role: 'member',
-      updatedAt: new Date(0),
-      isOwner: false,
+type GroupOption = (typeof groupOptions.value)[number]
+
+function onPickerSelect({ publicId: pid, folderValue }: { publicId: string; folderValue?: string }) {
+  if (pid !== publicId.value) {
+    const opt = groupOptions.value.find((o) => o.publicId === pid)
+    if (!opt) return
+    refreshSeq += 1
+    requestedPublicId.value = ''
+    groupsSettled.value = true
+    publicId.value = pid
+    selectedShop.value = null
+    showDetail.value = false
+    highlightShopId.value = ''
+    if (opt.id) {
+      currentGroup.value = opt as GroupView
+      isMember.value = true
+      store.setCurrentGroup(opt.id)
+    } else {
+      currentGroup.value = {
+        id: '',
+        publicId: pid,
+        name: opt.name,
+        role: 'member',
+        updatedAt: new Date(0),
+        isOwner: false,
+      }
+      isMember.value = false
+      store.setRecentPublicGroup({ publicId: pid, name: opt.name })
     }
-    isMember.value = false
-    store.setRecentPublicGroup({ publicId: option.publicId, name: option.name })
+    loadedOnce.value = true
+    folderFilter.value = 'all'
+    void loadFolders()
+    void loadShops()
   }
-  showGroupPicker.value = false
-  loadedOnce.value = true
-  void loadShops()
+  if (folderValue !== undefined) {
+    onFolderFilterChange(folderValue)
+  }
 }
 
 onLoad((query) => {
   if (query?.publicId) {
-    requestedPublicId.value = decodeURIComponent(query.publicId as string)
+    try {
+      requestedPublicId.value = decodeURIComponent(query.publicId as string)
+    } catch {
+      requestedPublicId.value = query.publicId as string
+    }
     publicId.value = requestedPublicId.value
   }
 })
@@ -420,14 +520,16 @@ onShow(() => {
   refresh()
   refreshAuthorizedLocation()
 })
+
+onUnload(() => {
+  if (highlightTimer) clearTimeout(highlightTimer)
+})
 </script>
 
 <template>
   <view class="map-page">
-    <view v-if="loading && !loadedOnce" class="center-loading">
-      <text>加载店铺…</text>
-    </view>
-    <view v-else-if="errorMsg && loadFailed" class="center-loading">
+    <global-loading />
+    <view v-if="errorMsg && loadFailed" class="center-loading">
       <text>{{ errorMsg }}</text>
       <button class="retry-btn" @click="refresh">重试</button>
     </view>
@@ -448,37 +550,26 @@ onShow(() => {
     <view class="top-bar">
       <view class="group-chip" @click="openGroupPicker">
         <text class="chip-name">{{ currentGroup ? currentGroup.name : '未选择清单' }}</text>
-        <text v-if="currentGroup" class="chip-tag">{{ isMember ? (currentGroup.isOwner ? '创建者' : '成员') : '访客' }}</text>
+        <text v-if="currentGroup" class="chip-tag">{{ currentFilterLabel }}</text>
         <text class="chip-arrow">▾</text>
       </view>
       <view class="legend">
         <view v-for="c in SHOP_CATEGORIES" :key="c" class="legend-item">
-          <image :src="MARKER_ICONS[c]" class="legend-icon" mode="aspectFit" />
+          <text v-if="LEGEND_EMOJIS[c]" class="legend-icon-emoji">{{ LEGEND_EMOJIS[c] }}</text>
+          <image v-else :src="MARKER_ICONS[c]" class="legend-icon" mode="aspectFit" />
           <text class="legend-label">{{ CATEGORY_LABELS[c] }}</text>
         </view>
       </view>
     </view>
 
-    <view v-if="showGroupPicker" class="picker-mask" @click="showGroupPicker = false">
-      <view class="picker-sheet" @click.stop>
-        <view class="sheet-head">
-          <text class="sheet-title">选择清单</text>
-          <text class="sheet-close" @click="showGroupPicker = false">✕</text>
-        </view>
-        <scroll-view scroll-y class="picker-list">
-          <view
-            v-for="opt in groupOptions"
-            :key="opt.publicId"
-            class="picker-item"
-            :class="{ active: publicId === opt.publicId }"
-            @click="selectGroup(opt)"
-          >
-            <text class="picker-name">{{ opt.name }}</text>
-            <text v-if="publicId === opt.publicId" class="picker-check">✓</text>
-          </view>
-        </scroll-view>
-      </view>
-    </view>
+    <group-city-picker
+      v-model="showLayerPicker"
+      :options="groupOptions"
+      :current-public-id="publicId"
+      :current-folder-filter="folderFilter"
+      mode="tree"
+      @select="onPickerSelect"
+    />
 
     <view v-if="!currentGroup && groupsSettled" class="no-group-tip" @click="goManage">
       <text class="tip-text">您还没有添加要共享的清单</text>
@@ -488,7 +579,7 @@ onShow(() => {
     <view v-if="showEmptyState" class="empty-tip">
       <image class="empty-icon" src="/static/tabbar/调皮.png" mode="aspectFit" />
       <view class="empty-copy">
-        <text class="empty-text">清单里还没有店铺</text>
+        <text class="empty-text">清单里还没有内容</text>
         <text v-if="!isMember" class="empty-sub">快让朋友添加第一家好吃的吧</text>
         <text v-else class="empty-sub">在地图上点亮第一站</text>
       </view>
@@ -543,7 +634,7 @@ onShow(() => {
           <text>尚未获取当前位置</text>
           <button class="retry-btn" @click="onGetLocation">获取位置</button>
         </view>
-        <view v-else-if="nearbyList.length === 0" class="sheet-empty">还没有店铺</view>
+        <view v-else-if="nearbyList.length === 0" class="sheet-empty">还没有内容</view>
         <scroll-view v-else scroll-y class="nearby-list">
           <view
             v-for="(s, idx) in nearbyList"
@@ -610,7 +701,9 @@ onShow(() => {
   left: 16rpx;
   right: 16rpx;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 12rpx;
   pointer-events: none;
 }
@@ -690,6 +783,8 @@ onShow(() => {
 
 .group-chip {
   align-self: flex-start;
+  flex: none;
+  max-width: 44%;
   display: flex;
   align-items: center;
   gap: 12rpx;
@@ -705,6 +800,9 @@ onShow(() => {
   font-size: 28rpx;
   font-weight: 700;
   color: #37291a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chip-tag {
@@ -720,89 +818,16 @@ onShow(() => {
   color: #6B6F73;
 }
 
-.picker-mask {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  background-color: rgba(55, 41, 26, 0.35);
-}
-
-.picker-sheet {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 21;
-  background-color: #FEF9FF;
-  border-radius: 24rpx 24rpx 0 0;
-  padding: 32rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
-}
-
-.sheet-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 32rpx;
-}
-
-.sheet-title {
-  font-size: 32rpx;
-  font-weight: 700;
-  color: #37291a;
-}
-
-.sheet-close {
-  font-size: 32rpx;
-  color: #6B6F73;
-  padding: 4rpx 12rpx;
-}
-
-.picker-list {
-  max-height: 50vh;
-  display: block;
-  margin-top: 32rpx;
-}
-
-.picker-item {
-  display: flex;
-  align-items: center;
-  gap: 24rpx;
-  padding: 40rpx 36rpx;
-  border-radius: 24rpx;
-  background-color: #F5F5F5;
-  margin-bottom: 32rpx;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-
-  &.active {
-    background-color: #E5E5E5;
-  }
-}
-
-.picker-name {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #37291a;
-  line-height: 1.3;
-  flex: 1;
-}
-
-.picker-check {
-  color: #36393B;
-  font-size: 32rpx;
-  font-weight: 700;
-}
-
 .legend {
-  align-self: flex-start;
   display: flex;
-  gap: 20rpx;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8rpx 16rpx;
+  max-width: 56%;
   background-color: rgba(255, 255, 255, 0.95);
   border: 1rpx solid #E5E5E5;
   border-radius: 999rpx;
-  padding: 8rpx 20rpx;
+  padding: 8rpx 16rpx;
   box-shadow: 0 4rpx 16rpx rgba(54, 57, 59, 0.10);
 }
 
@@ -815,6 +840,11 @@ onShow(() => {
 .legend-icon {
   width: 28rpx;
   height: 28rpx;
+}
+
+.legend-icon-emoji {
+  font-size: 28rpx;
+  line-height: 1;
 }
 
 .legend-label {
@@ -1029,6 +1059,8 @@ onShow(() => {
 
 .nearby-list {
   flex: 1;
+  min-height: 0;
+  height: 0;
 }
 
 .nearby-item {

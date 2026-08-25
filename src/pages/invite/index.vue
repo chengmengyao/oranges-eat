@@ -9,13 +9,13 @@ import {
 } from '@/services/group'
 import { useGroupStore } from '@/stores/group'
 import { parseInviteEntry } from '@/utils/invite-entry'
+import { hideLoading, showLoading } from '@/utils/global-loading'
 
 const store = useGroupStore()
 
 const token = ref('')
 const code = ref('')
 const publicId = ref('')
-const loading = ref(true)
 const preview = ref<GroupPreview | null>(null)
 const joinName = ref('')
 const joining = ref(false)
@@ -24,9 +24,9 @@ const loadError = ref('')
 const mode = ref<'invite' | 'public'>('invite')
 
 async function load() {
-  loading.value = true
   loadError.value = ''
   preview.value = null
+  showLoading()
   try {
     if (token.value || code.value) {
       const res = await previewInvite(token.value, code.value)
@@ -50,7 +50,7 @@ async function load() {
     console.error('加载邀请失败', err)
     loadError.value = '加载失败，请检查网络后重试'
   } finally {
-    loading.value = false
+    hideLoading()
   }
 }
 
@@ -110,56 +110,47 @@ onLoad((query) => {
 
 <template>
   <view class="invite-page">
-    <view v-if="loading" class="state-page">
-      <view class="loading-orbit">
-        <view class="loading-dot" />
-        <view class="loading-dot delay" />
-        <view class="loading-dot delay-more" />
-      </view>
-      <text class="state-copy">正在打开邀请…</text>
-    </view>
+    <global-loading />
 
-    <template v-else-if="preview">
+    <template v-if="preview">
       <view class="invite-content">
-        <view class="hero-visual">
-          <image class="hero-image" src="/static/tabbar/眨眼.jpg" mode="aspectFit" />
+        <view class="hero">
+          <image class="hero-image" src="/static/invite/hero.png" mode="aspectFit" />
         </view>
 
-        <text class="eyebrow">共享美食地图</text>
+        <text class="tag">共享美食地图</text>
         <text class="hero-title">一起收藏好吃的</text>
         <text class="hero-copy">
           {{ mode === 'invite' ? '朋友邀请你共同维护一份美食清单' : '你正在查看一份朋友分享的美食清单' }}
         </text>
 
-        <view class="group-card">
-          <view class="group-info">
-            <text class="group-label">邀请你加入</text>
-            <text class="group-name">{{ preview.name }}</text>
-            <text class="group-meta">{{ preview.memberCount }} 位成员 · 一起发现好店</text>
+        <view class="preview-card">
+          <view class="avatar">
+            <image class="avatar-image" src="/static/invite/avatar-person.png" mode="aspectFit" />
           </view>
-          <view class="member-faces">
-            <image src="/static/tabbar/汉堡2.jpg" mode="aspectFit" />
+          <view class="preview-info">
+            <text class="preview-label">邀请你加入</text>
+            <text class="preview-title">{{ preview.name }}</text>
+            <text class="preview-meta">{{ preview.memberCount }} 位成员 · 一起发现好店</text>
           </view>
+          <image class="food-stack" src="/static/invite/food-stack.png" mode="aspectFit" />
         </view>
 
-        <view
-          v-if="mode === 'invite' && !preview.alreadyMember"
-          class="name-card"
-        >
-          <view class="name-heading">
-            <text class="name-label">加入后如何称呼你</text>
-            <text class="required-tag">必填</text>
+        <view v-if="mode === 'invite' && !preview.alreadyMember" class="input-section">
+          <view class="input-header">
+            <text class="input-label">加入后如何称呼你</text>
+            <text class="input-required">必填</text>
           </view>
           <input
             v-model="joinName"
-            class="name-input"
+            class="input-field"
             placeholder="例如：小橙"
             placeholder-class="input-placeholder"
             maxlength="20"
             confirm-type="done"
             @confirm="confirmJoin"
           />
-          <text class="name-tip">仅清单成员可见，用于成员列表和标记店铺由谁添加</text>
+          <text class="input-hint">仅清单成员可见，用于成员列表和标记店铺由谁添加</text>
           <text v-if="joinError" class="error">{{ joinError }}</text>
         </view>
       </view>
@@ -167,18 +158,19 @@ onLoad((query) => {
       <view class="invite-actions">
         <button
           v-if="mode === 'invite' && !preview.alreadyMember"
-          class="action-btn primary-action"
-          hover-class="primary-action-hover"
+          class="action-btn btn-primary"
+          hover-class="btn-primary-hover"
           :disabled="joining"
           :loading="joining"
           @click="confirmJoin"
         >
-          加入这份清单
+          <image v-if="!joining" class="btn-icon" src="/static/invite/user-white.png" mode="aspectFit" />
+          <text>加入这份清单</text>
         </button>
         <button
           v-else
-          class="action-btn primary-action"
-          hover-class="primary-action-hover"
+          class="action-btn btn-primary"
+          hover-class="btn-primary-hover"
           @click="viewMap"
         >
           {{ preview.alreadyMember ? '进入我的清单' : '查看共享地图' }}
@@ -188,15 +180,15 @@ onLoad((query) => {
 
     <view v-else class="state-page invalid-page">
       <view class="invalid-visual">
-        <image src="/static/tabbar/惊讶.png" mode="aspectFit" />
+        <text class="invalid-mark">!</text>
       </view>
       <text class="state-title">{{ loadError ? '邀请加载失败' : '这份邀请暂时打不开' }}</text>
       <text class="state-copy">
         {{ loadError || '邀请可能已过期或被撤销，请让朋友重新生成' }}
       </text>
       <button
-        class="action-btn primary-action state-action"
-        hover-class="primary-action-hover"
+        class="action-btn btn-primary state-action"
+        hover-class="btn-primary-hover"
         @click="loadError ? load() : goManage()"
       >
         {{ loadError ? '重新加载' : '返回我的清单' }}
@@ -210,8 +202,9 @@ onLoad((query) => {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  padding: 28rpx 40rpx calc(32rpx + env(safe-area-inset-bottom));
-  background-color: $page-bg;
+  padding: 90rpx 45rpx calc(60rpx + env(safe-area-inset-bottom));
+  background-color: #ffffff;
+  box-sizing: border-box;
 }
 
 .invite-content {
@@ -222,152 +215,151 @@ onLoad((query) => {
   width: 100%;
 }
 
-.hero-visual {
-  position: relative;
-  width: 380rpx;
-  height: 236rpx;
-  margin: 10rpx auto 4rpx;
+.hero {
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-bottom: 45rpx;
 }
 
 .hero-image {
-  width: 200rpx;
-  height: 200rpx;
-  border-radius: 32rpx;
+  width: 225rpx;
+  height: 225rpx;
 }
 
-.eyebrow {
-  margin-top: 4rpx;
-  padding: 8rpx 18rpx;
-  border-radius: 999rpx;
-  background-color: rgba(255, 199, 39, 0.2);
-  color: $text-primary;
+.tag {
+  padding: 8rpx 22rpx;
+  border-radius: 11rpx;
+  background-color: rgba(0, 0, 0, 0.05);
+  color: #666;
   font-size: 22rpx;
-  font-weight: 600;
-  letter-spacing: 2rpx;
+  font-weight: 500;
 }
 
 .hero-title {
-  margin-top: 18rpx;
-  color: $text-primary;
+  margin-top: 22rpx;
+  color: #111;
   font-size: 52rpx;
-  font-weight: 800;
-  letter-spacing: -1rpx;
-  line-height: 1.18;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .hero-copy {
   max-width: 590rpx;
-  margin-top: 14rpx;
-  color: $text-secondary;
-  font-size: 27rpx;
-  line-height: 1.55;
+  margin-top: 15rpx;
+  color: #888;
+  font-size: 28rpx;
+  line-height: 1.5;
   text-align: center;
 }
 
-.group-card {
+.preview-card {
   display: flex;
   align-items: center;
   width: 100%;
-  margin-top: 32rpx;
-  padding: 26rpx 24rpx;
-  border: 1rpx solid rgba(54, 57, 59, 0.08);
-  border-radius: 28rpx;
-  background-color: $card-bg;
-  box-shadow: 0 14rpx 34rpx rgba(55, 41, 26, 0.08);
+  margin-top: 52rpx;
+  padding: 30rpx;
+  border: 2rpx solid #e8e8e8;
+  border-radius: 22rpx;
+  background-color: #f5f5f5;
+  box-sizing: border-box;
 }
 
-.group-info {
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 82rpx;
+  height: 82rpx;
+  flex-shrink: 0;
+  border-radius: 19rpx;
+  background: linear-gradient(135deg, #f5a623 0%, #e85d75 100%);
+}
+
+.avatar-image {
+  width: 45rpx;
+  height: 45rpx;
+}
+
+.preview-info {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-width: 0;
-  margin-left: 20rpx;
+  margin-left: 22rpx;
 }
 
-.group-label {
-  color: $text-secondary;
-  font-size: 21rpx;
+.preview-label {
+  color: #999;
+  font-size: 24rpx;
 }
 
-.group-name {
+.preview-title {
   overflow: hidden;
   margin-top: 4rpx;
-  color: $text-primary;
+  color: #111;
   font-size: 32rpx;
-  font-weight: 700;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.group-meta {
-  margin-top: 6rpx;
-  color: $text-secondary;
-  font-size: 22rpx;
+.preview-meta {
+  margin-top: 4rpx;
+  color: #999;
+  font-size: 24rpx;
 }
 
-.member-faces {
-  display: flex;
-  flex: none;
-  margin-left: 12rpx;
-
-  image {
-    width: 90rpx;
-    height: 90rpx;
-    border: 4rpx solid $card-bg;
-    border-radius: 50%;
-    background-color: $section-bg;
-  }
+.food-stack {
+  width: 90rpx;
+  height: 90rpx;
+  flex-shrink: 0;
 }
 
-.name-card {
+.input-section {
   width: 100%;
-  margin-top: 22rpx;
-  padding: 24rpx;
-  border-radius: 24rpx;
-  background-color: rgba(254, 252, 249, 0.72);
+  margin-top: 45rpx;
 }
 
-.name-heading {
+.input-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.name-label {
-  color: $text-primary;
-  font-size: 27rpx;
-  font-weight: 650;
-}
-
-.required-tag {
-  color: $text-secondary;
-  font-size: 20rpx;
-}
-
-.name-input {
-  width: 100%;
-  height: 84rpx;
-  margin-top: 16rpx;
-  padding: 0 22rpx;
-  border: 2rpx solid rgba(54, 57, 59, 0.16);
-  border-radius: 18rpx;
-  background-color: $card-bg;
-  color: $text-primary;
+.input-label {
+  color: #111;
   font-size: 28rpx;
+  font-weight: 600;
+}
+
+.input-required {
+  color: #bbb;
+  font-size: 22rpx;
+}
+
+.input-field {
+  width: 100%;
+  height: 88rpx;
+  margin-top: 15rpx;
+  padding: 0 30rpx;
+  border: 2rpx solid #e0e0e0;
+  border-radius: 19rpx;
+  background-color: #fff;
+  color: #111;
+  font-size: 30rpx;
+  box-sizing: border-box;
 }
 
 .input-placeholder {
-  color: rgba(107, 111, 115, 0.62);
+  color: #ccc;
 }
 
-.name-tip {
+.input-hint {
   display: block;
-  margin-top: 12rpx;
-  color: $text-secondary;
-  font-size: 21rpx;
+  margin-top: 11rpx;
+  color: #bbb;
+  font-size: 22rpx;
   line-height: 1.45;
 }
 
@@ -380,35 +372,44 @@ onLoad((query) => {
 
 .invite-actions {
   width: 100%;
-  padding-top: 30rpx;
+  margin-top: auto;
+  padding-top: 60rpx;
 }
 
 .action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
+  height: 92rpx;
   margin: 0;
+  padding: 0;
   border: none;
+  border-radius: 999rpx;
   font-size: 30rpx;
-  font-weight: 700;
+  font-weight: 500;
+  line-height: normal;
 
   &::after {
     border: none;
   }
 }
 
-.primary-action {
-  height: 96rpx;
-  border-radius: 48rpx;
-  background-color: $pink-primary;
+.btn-primary {
+  background-color: #1a1a1a;
   color: #fff;
-  line-height: 96rpx;
-  box-shadow: 0 14rpx 28rpx rgba(54, 57, 59, 0.2);
 
   &::after {
     color: #fff;
   }
 }
 
-.primary-action[disabled] {
+.btn-primary-hover {
+  opacity: 0.85;
+  transform: scale(0.98);
+}
+
+.btn-primary[disabled] {
   opacity: 0.72;
 
   &::after {
@@ -416,17 +417,10 @@ onLoad((query) => {
   }
 }
 
-.primary-action-hover {
-  background-color: #2a2c2e;
-
-  &::after {
-    color: #fff;
-  }
-}
-
-.action-star {
-  margin-right: 12rpx;
-  color: $warning;
+.btn-icon {
+  width: 30rpx;
+  height: 30rpx;
+  margin-right: 15rpx;
 }
 
 .state-page {
@@ -435,30 +429,8 @@ onLoad((query) => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: calc(100vh - 120rpx);
+  min-height: calc(100vh - 180rpx);
   text-align: center;
-}
-
-.loading-orbit {
-  display: flex;
-  gap: 12rpx;
-  margin-bottom: 24rpx;
-}
-
-.loading-dot {
-  width: 18rpx;
-  height: 18rpx;
-  border-radius: 50%;
-  background-color: $warning;
-  opacity: 1;
-}
-
-.loading-dot.delay {
-  opacity: 0.68;
-}
-
-.loading-dot.delay-more {
-  opacity: 0.36;
 }
 
 .invalid-visual {
@@ -467,32 +439,33 @@ onLoad((query) => {
   justify-content: center;
   width: 220rpx;
   height: 220rpx;
-  margin-bottom: 32rpx;
+  margin-bottom: 45rpx;
+  border: 2rpx solid #e8e8e8;
   border-radius: 50%;
-  background-color: $card-bg;
-  box-shadow: 0 18rpx 46rpx rgba(55, 41, 26, 0.1);
+  background-color: #f5f5f5;
+}
 
-  image {
-    width: 190rpx;
-    height: 190rpx;
-  }
+.invalid-mark {
+  color: #111;
+  font-size: 96rpx;
+  font-weight: 600;
 }
 
 .state-title {
-  color: $text-primary;
+  color: #111;
   font-size: 40rpx;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .state-copy {
   max-width: 540rpx;
   margin-top: 16rpx;
-  color: $text-secondary;
+  color: #888;
   font-size: 26rpx;
   line-height: 1.55;
 }
 
 .state-action {
-  margin-top: 44rpx;
+  margin-top: 60rpx;
 }
 </style>

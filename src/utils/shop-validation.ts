@@ -53,10 +53,10 @@ export function normalizeText(value: unknown, maxLength: number): string {
 export function validateShopForm(form: ShopForm): ValidationError | null {
   const name = normalizeText(form.name, MAX_NAME_LENGTH)
   if (!name) {
-    return { field: 'name', message: '请输入店铺名称' }
+    return { field: 'name', message: '请输入名称' }
   }
   if (!SHOP_CATEGORIES.includes(form.category)) {
-    return { field: 'category', message: '请选择店铺分类' }
+    return { field: 'category', message: '请选择分类' }
   }
   const address = normalizeText(form.address, MAX_ADDRESS_LENGTH)
   if (!address) {

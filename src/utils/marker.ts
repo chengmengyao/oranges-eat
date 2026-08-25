@@ -9,10 +9,11 @@ export const MARKER_ICON_BY_CATEGORY: Record<string, string> = {
   restaurant: '/static/markers/restaurant.png',
   cake: '/static/markers/cake.png',
   milktea: '/static/markers/milktea.png',
+  spot: '/static/markers/spot.png',
 }
 
-export const MARKER_WIDTH = 34
-export const MARKER_HEIGHT = 34
+export const MARKER_WIDTH = 38
+export const MARKER_HEIGHT = 38
 
 export interface BuiltMarker {
   id: number

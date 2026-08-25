@@ -70,6 +70,11 @@ function step1Close() {
   run('[1/4] 关闭 IDE 中的当前项目', cliPath, ['close', '--project', projectDir])
 }
 
+function step1CleanIdeCache() {
+  run('[1/4] 清理 IDE 项目编译缓存', cliPath, ['cache', '--clean', 'file', '--project', projectDir])
+  run('[1/4] 清理 IDE 文件缓存', cliPath, ['cache', '--clean', 'compile', '--project', projectDir])
+}
+
 function step2Clean() {
   if (existsSync(privateConfigPath)) {
     privateConfigContent = normalizePrivateConfig(readFileSync(privateConfigPath, 'utf8'))
@@ -107,6 +112,7 @@ function step4Open() {
 
 validatePaths()
 step1Close()
+step1CleanIdeCache()
 step2Clean()
 step3Build()
 step4Open()

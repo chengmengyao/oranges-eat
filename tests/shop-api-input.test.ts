@@ -23,6 +23,7 @@ describe('shopApi validateShopInput', () => {
         longitude: 116.4,
         address: '北京市朝阳区',
         remark: '周末去',
+        folderId: null,
       },
     })
   })
@@ -32,6 +33,29 @@ describe('shopApi validateShopInput', () => {
       ok: false,
       error: '所选位置坐标无效',
       code: 'INVALID_PARAM',
+    })
+  })
+
+  it('透传城市子清单 folderId，未传时为 null', () => {
+    expect(validateShopInput(validInput()).data.folderId).toBeNull()
+    expect(validateShopInput({ ...validInput(), folderId: '  folder-beijing  ' }).data.folderId).toBe(
+      'folder-beijing',
+    )
+  })
+
+  it('景点 spot 分类是合法分类', () => {
+    const res = validateShopInput({ ...validInput(), name: '  西湖  ', category: 'spot' })
+    expect(res).toEqual({
+      ok: true,
+      data: {
+        name: '西湖',
+        category: 'spot',
+        latitude: 39.9,
+        longitude: 116.4,
+        address: '北京市朝阳区',
+        remark: '周末去',
+        folderId: null,
+      },
     })
   })
 })

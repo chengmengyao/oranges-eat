@@ -2,12 +2,13 @@
  * 店铺 DTO 脱敏纯逻辑（与云函数共用，可被单元测试直接引用）
  * 访客与成员看到的字段不同；任何响应都不含 OpenID / token 摘要 / 内部字段。
  */
-const SHOP_CATEGORIES = ['restaurant', 'cake', 'milktea']
+const SHOP_CATEGORIES = ['restaurant', 'cake', 'milktea', 'spot']
 
 // 访客 DTO：不含添加者名称、isMine、canEdit、canDelete
 function toPublicShopView(shop) {
   return {
     id: shop._id,
+    folderId: shop.folderId || null,
     name: shop.name,
     category: shop.category,
     latitude: shop.latitude,
@@ -27,6 +28,7 @@ function toShopView(shop, member) {
   const canDelete = canEdit
   return {
     id: shop._id,
+    folderId: shop.folderId || null,
     name: shop.name,
     category: shop.category,
     latitude: shop.latitude,

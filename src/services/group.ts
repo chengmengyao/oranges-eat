@@ -1,5 +1,6 @@
 import { callFunction } from '@/utils/cloud'
 import type {
+  FolderView,
   GroupPreview,
   GroupView,
   MemberView,
@@ -133,5 +134,73 @@ export async function deleteGroup(groupId: string): Promise<{ deleted: boolean }
   return callFunction('groupApi', {
     action: 'deleteGroup',
     groupId,
+  })
+}
+
+export interface ListFoldersResult {
+  folders: FolderView[]
+  uncategorizedCount: number
+}
+
+export async function listFolders(groupId: string): Promise<ListFoldersResult> {
+  return callFunction('groupApi', { action: 'listFolders', groupId })
+}
+
+export async function listPublicFolders(publicId: string): Promise<ListFoldersResult> {
+  return callFunction('groupApi', { action: 'listPublicFolders', publicId })
+}
+
+export async function createFolder(
+  groupId: string,
+  name: string,
+): Promise<FolderView> {
+  return callFunction('groupApi', { action: 'createFolder', groupId, name })
+}
+
+export async function updateFolder(
+  folderId: string,
+  name: string,
+): Promise<{ updatedAt: number }> {
+  return callFunction('groupApi', { action: 'updateFolder', folderId, name })
+}
+
+export async function deleteFolder(folderId: string): Promise<{ deleted: boolean }> {
+  return callFunction('groupApi', { action: 'deleteFolder', folderId })
+}
+
+export interface MergeGroupsResult {
+  group: GroupView
+  mergedShops: number
+  mergedFolders: number
+}
+
+export async function mergeGroups(
+  targetGroupId: string,
+  sourceGroupIds: string[],
+): Promise<MergeGroupsResult> {
+  return callFunction('groupApi', {
+    action: 'mergeGroups',
+    targetGroupId,
+    sourceGroupIds,
+  })
+}
+
+export interface AssignUncategorizedInput {
+  groupId: string
+  folderId?: string
+  folderName?: string
+}
+
+export interface AssignUncategorizedResult {
+  updated: number
+  folderId: string
+}
+
+export async function assignUncategorizedShops(
+  input: AssignUncategorizedInput,
+): Promise<AssignUncategorizedResult> {
+  return callFunction('groupApi', {
+    action: 'assignUncategorizedShops',
+    ...input,
   })
 }

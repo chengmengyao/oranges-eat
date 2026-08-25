@@ -12,6 +12,7 @@ export async function listPublicShops(
   publicId: string,
   cursor?: string,
   category?: ShopCategory | 'all',
+  folderId?: string,
   limit = PAGE_SIZE,
 ): Promise<PagedShops<PublicShopView>> {
   return callFunction('shopApi', {
@@ -19,16 +20,19 @@ export async function listPublicShops(
     publicId,
     cursor: cursor || null,
     category: category || 'all',
+    folderId: folderId || 'all',
     limit,
   })
 }
 
 export async function listPublicMapShops(
   publicId: string,
+  folderId?: string,
 ): Promise<PublicShopView[]> {
   return callFunction('shopApi', {
     action: 'listPublicMapShops',
     publicId,
+    folderId: folderId || 'all',
   })
 }
 
@@ -36,6 +40,7 @@ export async function listMemberShops(
   groupId: string,
   cursor?: string,
   category?: ShopCategory | 'all',
+  folderId?: string,
   limit = PAGE_SIZE,
 ): Promise<PagedShops<ShopView>> {
   return callFunction('shopApi', {
@@ -43,6 +48,7 @@ export async function listMemberShops(
     groupId,
     cursor: cursor || null,
     category: category || 'all',
+    folderId: folderId || 'all',
     limit,
   })
 }
@@ -54,6 +60,7 @@ export interface CreateShopInput {
   longitude: number
   address: string
   remark?: string
+  folderId?: string | null
   requestId: string
 }
 
@@ -75,6 +82,8 @@ export interface UpdateShopInput {
   longitude: number
   address: string
   remark?: string
+  folderId?: string | null
+  targetGroupId?: string
   expectedUpdatedAt: number
 }
 
@@ -82,7 +91,7 @@ export async function updateShop(
   groupId: string,
   shopId: string,
   input: UpdateShopInput,
-): Promise<ShopView> {
+): Promise<ShopView & { moved?: boolean }> {
   return callFunction('shopApi', {
     action: 'updateShop',
     groupId,

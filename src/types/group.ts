@@ -65,3 +65,20 @@ export type GroupPreview = {
   inviteRemainingUses?: number
   alreadyMember: boolean
 }
+
+export interface Folder {
+  _id: string
+  groupId: string
+  name: string
+  sortOrder: number
+  createdByOpenId: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type FolderView = {
+  id: string
+  name: string
+  sortOrder: number
+  shopCount?: number
+}

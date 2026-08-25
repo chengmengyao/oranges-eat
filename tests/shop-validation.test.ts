@@ -56,6 +56,13 @@ describe('validateShopForm', () => {
     expect(validateShopForm(validForm())).toBeNull()
   })
 
+  it('景点 spot 分类合法', () => {
+    const f = validForm()
+    f.category = 'spot'
+    f.name = '西湖'
+    expect(validateShopForm(f)).toBeNull()
+  })
+
   it('名称为空失败', () => {
     const f = validForm()
     f.name = ''

@@ -2,7 +2,8 @@
   "easycom": {
     "autoscan": true,
     "custom": {
-      "^wd-(.*)": "@wot-ui/ui/components/wd-$1/wd-$1.vue"
+      "^wd-(.*)": "@wot-ui/ui/components/wd-$1/wd-$1.vue",
+      "^global-loading$": "@/components/global-loading/global-loading.vue"
     }
   },
   "pages": [
@@ -45,19 +46,19 @@
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "地图",
+        "text": "Map",
         "iconPath": "static/tabbar/map.png",
         "selectedIconPath": "static/tabbar/map.png"
       },
       {
         "pagePath": "pages/food/food",
-        "text": "美食",
+        "text": "Search",
         "iconPath": "static/tabbar/food.png",
         "selectedIconPath": "static/tabbar/food.png"
       },
       {
         "pagePath": "pages/manage/manage",
-        "text": "管理",
+        "text": "home",
         "iconPath": "static/tabbar/manage.png",
         "selectedIconPath": "static/tabbar/manage.png"
       }

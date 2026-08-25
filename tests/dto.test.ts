@@ -5,6 +5,7 @@ function dbShop(overrides = {}) {
   return {
     _id: 'shop-abc',
     groupId: 'group-1',
+    folderId: 'folder-beijing',
     name: '示例饭店',
     category: 'restaurant',
     latitude: 39.9,
@@ -38,6 +39,12 @@ describe('toPublicShopView 访客 DTO 脱敏', () => {
     expect(view.id).toBe('shop-abc')
     expect(view.name).toBe('示例饭店')
     expect(view.address).toBe('北京市朝阳区')
+  })
+
+  it('透传城市子清单 folderId，未分类为 null', () => {
+    expect(toPublicShopView(dbShop()).folderId).toBe('folder-beijing')
+    expect(toPublicShopView(dbShop({ folderId: null })).folderId).toBeNull()
+    expect(toPublicShopView(dbShop()).folderId).not.toBeUndefined()
   })
 })
 

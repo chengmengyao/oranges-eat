@@ -1,8 +1,9 @@
-export type ShopCategory = 'restaurant' | 'cake' | 'milktea'
+export type ShopCategory = 'restaurant' | 'cake' | 'milktea' | 'spot'
 
 export interface Shop {
   _id: string
   groupId: string
+  folderId: string | null
   name: string
   category: ShopCategory
   latitude: number
@@ -18,6 +19,7 @@ export interface Shop {
 
 export interface ShopView {
   id: string
+  folderId: string | null
   name: string
   category: ShopCategory
   latitude: number

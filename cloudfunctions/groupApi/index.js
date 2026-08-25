@@ -12,13 +12,14 @@ const GROUPS = 'groups'
 const MEMBERS = 'members'
 const INVITES = 'invites'
 const SHOPS = 'shops'
+const FOLDERS = 'folders'
 
 const INVITE_DEFAULT_DAYS = 7
 const INVITE_DEFAULT_MAX_USES = 50
 // 服务端 where().update()/remove() 单次最多处理 1000 条记录
 const MAX_BATCH_WRITE = 1000
 
-const COLLECTION_NAMES = [GROUPS, MEMBERS, INVITES, SHOPS]
+const COLLECTION_NAMES = [GROUPS, MEMBERS, INVITES, SHOPS, FOLDERS]
 let ensurePromise = null
 
 async function ensureCollections() {
@@ -140,6 +141,50 @@ function toMemberView(member, selfOpenId) {
     joinedAt: member.joinedAt,
     isSelf: member.userOpenId === selfOpenId,
   }
+}
+
+function toFolderView(folder) {
+  return {
+    id: folder._id,
+    name: folder.name,
+    sortOrder: folder.sortOrder,
+  }
+}
+
+function toFolderViewWithCount(folder, shopCount) {
+  return {
+    ...toFolderView(folder),
+    shopCount,
+  }
+}
+
+async function countShopsByFolder(groupId, folderId) {
+  const res = await db.collection(SHOPS).where({ groupId, folderId }).count()
+  return Number(res.total) || 0
+}
+
+async function countUncategorizedShops(groupId) {
+  const res = await db
+    .collection(SHOPS)
+    .where({ groupId })
+    .limit(1000)
+    .get()
+  return res.data.filter((s) => !s.folderId).length
+}
+
+async function findFolderById(folderId) {
+  const res = await db.collection(FOLDERS).doc(folderId).get().catch(() => null)
+  return res && res.data ? res.data : null
+}
+
+async function listFoldersByGroup(groupId) {
+  const res = await db
+    .collection(FOLDERS)
+    .where({ groupId })
+    .orderBy('sortOrder', 'asc')
+    .limit(200)
+    .get()
+  return res.data
 }
 
 // ---------- actions ----------
@@ -648,6 +693,275 @@ async function removeMember(event, openId) {
   return ok({ removed: true })
 }
 
+// ---------- folders ----------
+
+async function listFolders(event, openId) {
+  const groupId = normalizeText(event.groupId, 64)
+  if (!groupId) return fail('参数不完整', 'INVALID_PARAM')
+  const member = await findMember(groupId, openId)
+  if (!member) return fail('未加入该清单', 'FORBIDDEN')
+  const folders = await listFoldersByGroup(groupId)
+  const [withCount, uncategorizedCount] = await Promise.all([
+    Promise.all(
+      folders.map(async (f) => toFolderViewWithCount(f, await countShopsByFolder(groupId, f._id))),
+    ),
+    countUncategorizedShops(groupId),
+  ])
+  return ok({ folders: withCount, uncategorizedCount })
+}
+
+async function listPublicFolders(event) {
+  const publicId = normalizeText(event.publicId, 64)
+  if (!publicId) return fail('参数不完整', 'INVALID_PARAM')
+  const group = await findGroupByPublicId(publicId)
+  if (!isPublicReadableGroup(group)) {
+    return fail('清单不存在或不可访问', 'GROUP_NOT_FOUND')
+  }
+  const folders = await listFoldersByGroup(group._id)
+  const [withCount, uncategorizedCount] = await Promise.all([
+    Promise.all(
+      folders.map(async (f) => toFolderViewWithCount(f, await countShopsByFolder(group._id, f._id))),
+    ),
+    countUncategorizedShops(group._id),
+  ])
+  return ok({ folders: withCount, uncategorizedCount })
+}
+
+async function createFolder(event, openId) {
+  const groupId = normalizeText(event.groupId, 64)
+  const name = normalizeText(event.name, 30)
+  if (!groupId || !name) return fail('参数不完整', 'INVALID_PARAM')
+
+  const member = await findMember(groupId, openId)
+  if (!member) return fail('请先加入清单再创建城市', 'FORBIDDEN')
+  const group = await findGroupById(groupId)
+  if (!isPublicReadableGroup(group)) return fail('清单不存在或不可访问', 'GROUP_NOT_FOUND')
+
+  const countRes = await db.collection(FOLDERS).where({ groupId }).count()
+  const now = Date.now()
+  const folderDoc = {
+    groupId,
+    name,
+    sortOrder: Number(countRes.total) || 0,
+    createdByOpenId: openId,
+    createdAt: now,
+    updatedAt: now,
+  }
+  const res = await db.collection(FOLDERS).add({ data: folderDoc })
+  return ok(toFolderView({ ...folderDoc, _id: res._id }))
+}
+
+async function updateFolder(event, openId) {
+  const folderId = normalizeText(event.folderId, 64)
+  const name = normalizeText(event.name, 30)
+  const sortOrder = Number(event.sortOrder)
+  if (!folderId) return fail('参数不完整', 'INVALID_PARAM')
+
+  const folder = await findFolderById(folderId)
+  if (!folder) return fail('城市不存在', 'FOLDER_NOT_FOUND')
+  const member = await findMember(folder.groupId, openId)
+  if (!member) return fail('请先加入清单', 'FORBIDDEN')
+
+  const data = { updatedAt: Date.now() }
+  if (name) data.name = name
+  if (Number.isFinite(sortOrder)) data.sortOrder = sortOrder
+  await db.collection(FOLDERS).doc(folderId).update({ data })
+  return ok({ updatedAt: data.updatedAt })
+}
+
+async function deleteFolder(event, openId) {
+  const folderId = normalizeText(event.folderId, 64)
+  if (!folderId) return fail('参数不完整', 'INVALID_PARAM')
+
+  const folder = await findFolderById(folderId)
+  if (!folder) return fail('城市不存在', 'FOLDER_NOT_FOUND')
+  const member = await findMember(folder.groupId, openId)
+  if (!member) return fail('请先加入清单', 'FORBIDDEN')
+
+  // 该城市下的店铺归为未分类，不删除店铺
+  const now = Date.now()
+  await updateAllWhere(SHOPS, { groupId: folder.groupId, folderId }, { folderId: null, updatedAt: now })
+  await db.collection(FOLDERS).doc(folderId).remove()
+  return ok({ deleted: true })
+}
+
+async function assignUncategorizedShops(event, openId) {
+  const groupId = normalizeText(event.groupId, 64)
+  if (!groupId) return fail('参数不完整', 'INVALID_PARAM')
+  const member = await findMember(groupId, openId)
+  if (!member) return fail('未加入该清单', 'FORBIDDEN')
+
+  let folderId = normalizeText(event.folderId, 64)
+  const folderName = normalizeText(event.folderName, 30)
+  if (!folderId && folderName) {
+    const existing = await db
+      .collection(FOLDERS)
+      .where({ groupId, name: folderName })
+      .limit(1)
+      .get()
+    if (existing.data[0]) {
+      folderId = existing.data[0]._id
+    } else {
+      const targetFolderCount = await db.collection(FOLDERS).where({ groupId }).count()
+      const sortOrder = Number(targetFolderCount.total) || 0
+      const now = Date.now()
+      const addRes = await db.collection(FOLDERS).add({
+        data: {
+          groupId,
+          name: folderName,
+          sortOrder,
+          createdByOpenId: openId,
+          createdAt: now,
+          updatedAt: now,
+        },
+      })
+      folderId = addRes._id
+    }
+  }
+  if (!folderId) return fail('参数不完整', 'INVALID_PARAM')
+
+  const folder = await findFolderById(folderId)
+  if (!folder || folder.groupId !== groupId) {
+    return fail('城市不存在或不属于当前清单', 'INVALID_PARAM')
+  }
+
+  const now = Date.now()
+  let updated = 0
+  for (;;) {
+    const res = await db
+      .collection(SHOPS)
+      .where({ groupId })
+      .limit(1000)
+      .get()
+    const targets = res.data.filter((s) => !s.folderId)
+    if (targets.length === 0) break
+    await Promise.all(
+      targets.map((s) =>
+        db.collection(SHOPS).doc(s._id).update({
+          data: { folderId, updatedAt: now },
+        }),
+      ),
+    )
+    updated += targets.length
+    if (res.data.length < 1000) break
+  }
+  return ok({ updated, folderId })
+}
+
+async function mergeGroups(event, openId) {
+  const targetGroupId = normalizeText(event.targetGroupId, 64)
+  const sourceGroupIds = Array.isArray(event.sourceGroupIds)
+    ? event.sourceGroupIds
+        .map((id) => normalizeText(id, 64))
+        .filter(Boolean)
+        .filter((id) => id !== targetGroupId)
+    : []
+  if (!targetGroupId || sourceGroupIds.length === 0) {
+    return fail('参数不完整', 'INVALID_PARAM')
+  }
+
+  const targetMember = await findMember(targetGroupId, openId)
+  if (!targetMember || targetMember.role !== 'owner') {
+    return fail('只有创建者可以合并清单', 'FORBIDDEN')
+  }
+  const targetGroup = await findGroupById(targetGroupId)
+  if (!isPublicReadableGroup(targetGroup)) return fail('清单不存在或不可访问', 'GROUP_NOT_FOUND')
+
+  for (const sid of sourceGroupIds) {
+    const group = await findGroupById(sid)
+    if (!isPublicReadableGroup(group)) return fail('存在不可访问的清单', 'GROUP_NOT_FOUND')
+    const member = await findMember(sid, openId)
+    if (!member || member.role !== 'owner') {
+      return fail('只有创建者可以合并自己的清单', 'FORBIDDEN')
+    }
+  }
+
+  const now = Date.now()
+  const targetFolderCount = await db.collection(FOLDERS).where({ groupId: targetGroupId }).count()
+  let sortOrder = Number(targetFolderCount.total) || 0
+  let mergedShops = 0
+  let mergedFolders = 0
+
+  for (const sid of sourceGroupIds) {
+    const sourceGroup = await findGroupById(sid)
+    if (!sourceGroup) continue
+
+    // 1. 按原清单名创建城市子清单
+    const folderRes = await db.collection(FOLDERS).add({
+      data: {
+        groupId: targetGroupId,
+        name: sourceGroup.name,
+        sortOrder,
+        createdByOpenId: openId,
+        createdAt: now,
+        updatedAt: now,
+      },
+    })
+    const folderId = folderRes._id
+    sortOrder += 1
+    mergedFolders += 1
+
+    // 2. 迁移店铺：批量更新 groupId 与 folderId
+    for (;;) {
+      const res = await db
+        .collection(SHOPS)
+        .where({ groupId: sid })
+        .update({ data: { groupId: targetGroupId, folderId, updatedAt: now } })
+      const n = Number(res && res.stats && res.stats.updated) || 0
+      mergedShops += n
+      if (n < MAX_BATCH_WRITE) break
+    }
+
+    // 3. 迁移成员（幂等去重，owner 除外）
+    const membersRes = await db
+      .collection(MEMBERS)
+      .where({ groupId: sid, status: 'active' })
+      .limit(200)
+      .get()
+    for (const m of membersRes.data) {
+      if (m.role === 'owner' && m.userOpenId === openId) continue
+      const existing = await findMemberRecord(targetGroupId, m.userOpenId)
+      if (existing && existing.status === 'active') continue
+      const mid = memberId(targetGroupId, m.userOpenId)
+      if (existing) {
+        await db.collection(MEMBERS).doc(mid).update({
+          data: {
+            displayName: m.displayName,
+            role: 'member',
+            status: 'active',
+            joinedAt: now,
+            updatedAt: now,
+          },
+        })
+      } else {
+        await db.collection(MEMBERS).add({
+          data: {
+            _id: mid,
+            groupId: targetGroupId,
+            userOpenId: m.userOpenId,
+            displayName: m.displayName,
+            role: 'member',
+            status: 'active',
+            joinedAt: now,
+            updatedAt: now,
+          },
+        })
+      }
+    }
+
+    // 4. 清理邀请并删除来源清单
+    await removeAllWhere(INVITES, { groupId: sid })
+    await db.collection(GROUPS).doc(sid).remove()
+  }
+
+  const group = await findGroupById(targetGroupId)
+  return ok({
+    group: toGroupView(group, targetMember),
+    mergedShops,
+    mergedFolders,
+  })
+}
+
 // ---------- router ----------
 
 const actions = {
@@ -665,6 +979,13 @@ const actions = {
   updateMyDisplayName,
   removeMember,
   deleteGroup,
+  listFolders,
+  listPublicFolders,
+  createFolder,
+  updateFolder,
+  deleteFolder,
+  assignUncategorizedShops,
+  mergeGroups,
 }
 
 exports.main = async (event = {}) => {

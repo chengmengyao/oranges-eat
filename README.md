@@ -6,7 +6,7 @@
 
 - uni-app（Vue 3 + TypeScript + Vite），模板 `dcloudio/uni-preset-vue#vite-ts`
 - Wot UI v2.3.2（npm 精确锁定，`package-lock.json` 已提交）
-- 微信云开发：`groups` / `members` / `invites` / `shops` 四个集合（仅管理端可读写），业务只经云函数访问
+- 微信云开发：`groups` / `members` / `invites` / `shops` / `folders` 五个集合（仅管理端可读写），业务只经云函数访问
 - SCSS 主题入口 `src/styles/theme.scss`（Pink Topaz 配色）
 
 ## 目录结构
@@ -59,6 +59,7 @@ npm run build:mp-weixin   # 生产构建，并为“上传所有文件”安装�
 | `members` | `groupId` + `userOpenId` 唯一（`_id` = sha256 摘要） | 成员关系 |
 | `invites` | `tokenHash` 唯一 | 邀请记录（只存摘要） |
 | `shops` | `groupId` + `updatedAt` | 店铺 |
+| `folders` | `groupId` + `sortOrder` | 城市子清单（整体清单下按城市分组） |
 
 ## 配置
 

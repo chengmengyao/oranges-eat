@@ -44,10 +44,12 @@ describe('buildMarkers', () => {
       pubShop('a', 'restaurant'),
       pubShop('b', 'cake'),
       pubShop('c', 'milktea'),
+      pubShop('d', 'spot'),
     ])
     expect(markers[0].iconPath).toBe(MARKER_ICON_BY_CATEGORY.restaurant)
     expect(markers[1].iconPath).toBe(MARKER_ICON_BY_CATEGORY.cake)
     expect(markers[2].iconPath).toBe(MARKER_ICON_BY_CATEGORY.milktea)
+    expect(markers[3].iconPath).toBe(MARKER_ICON_BY_CATEGORY.spot)
   })
 
   it('坐标被正确复制', () => {

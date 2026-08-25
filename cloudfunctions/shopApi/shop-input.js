@@ -1,4 +1,4 @@
-const SHOP_CATEGORIES = ['restaurant', 'cake', 'milktea']
+const SHOP_CATEGORIES = ['restaurant', 'cake', 'milktea', 'spot']
 
 const MAX_NAME_LENGTH = 40
 const MAX_ADDRESS_LENGTH = 120
@@ -23,11 +23,11 @@ function isFiniteNumber(value) {
 
 function validateShopInput(event = {}) {
   const name = normalizeText(event.name, MAX_NAME_LENGTH)
-  if (!name) return fail('请输入店铺名称')
+  if (!name) return fail('请输入名称')
 
   const category = normalizeText(event.category, 20)
   if (!SHOP_CATEGORIES.includes(category)) {
-    return fail('请选择有效的店铺分类')
+    return fail('请选择有效的分类')
   }
 
   const address = normalizeText(event.address, MAX_ADDRESS_LENGTH)
@@ -47,7 +47,8 @@ function validateShopInput(event = {}) {
   }
 
   const remark = normalizeText(event.remark, MAX_REMARK_LENGTH)
-  return ok({ name, category, address, latitude, longitude, remark })
+  const folderId = normalizeText(event.folderId, 64) || null
+  return ok({ name, category, address, latitude, longitude, remark, folderId })
 }
 
 module.exports = {

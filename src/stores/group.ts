@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import type { GroupView } from '@/types/group'
+import type { FolderView, GroupView } from '@/types/group'
 
 const CURRENT_GROUP_KEY = 'currentGroupId'
 const RECENT_PUBLIC_GROUP_KEY = 'recentPublicGroup'
@@ -11,6 +11,7 @@ export interface RecentPublicGroup {
 
 interface GroupState {
   groups: GroupView[]
+  folders: FolderView[]
   currentGroupId: string
   loaded: boolean
   lastAddedShopId: string
@@ -18,6 +19,7 @@ interface GroupState {
 
 const state = reactive<GroupState>({
   groups: [],
+  folders: [],
   currentGroupId: '',
   loaded: false,
   lastAddedShopId: '',
@@ -41,6 +43,20 @@ export function useGroupStore() {
       state.currentGroupId = groups[0].id
       uni.setStorageSync(CURRENT_GROUP_KEY, state.currentGroupId)
     }
+  }
+
+  function setFolders(folders: FolderView[]) {
+    state.folders = folders
+  }
+
+  function clearFolders() {
+    state.folders = []
+  }
+
+  function folderName(folderId: string | null | undefined): string {
+    if (!folderId) return '未分类'
+    const folder = state.folders.find((f) => f.id === folderId)
+    return folder ? folder.name : '未分类'
   }
 
   function setCurrentGroup(id: string) {
@@ -89,6 +105,9 @@ export function useGroupStore() {
     state,
     loadLocal,
     setGroups,
+    setFolders,
+    clearFolders,
+    folderName,
     setCurrentGroup,
     currentGroup,
     setRecentPublicGroup,
