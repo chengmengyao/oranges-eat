@@ -1,8 +1,15 @@
 # 🍊 橙子吃吃 · 共享美食地图
 
-A shared food map WeChat Mini Program — friends co-maintain a favorite-restaurant list by forwarding invite links and scanning mini-program codes.
+We screenshot and bookmark restaurants while scrolling Douyin, only to lose them by the time we actually go out. Oranges-Eat turns scattered "want-to-try" bookmarks into a shared food map — open the mini program at a scenic spot, see which saved places are nearby, and pick the closest one. You can also mark sightseeing spots and plan where to go and what to eat together.
 
-朋友共同维护的共享美食地图微信小程序：创建者建立共享清单，通过微信转发邀请链接或小程序码邀请朋友加入，成员共同添加想吃或喜欢的店；拿到公开清单链接的访客可只读浏览全部店铺，无需加入。
+刷抖音、刷小红书，总能刷到让人心动的美食——随手点个赞、存个截图，然后就沉进收藏夹里。等真正出去玩，站在景点面前，才想起来问自己：「附近有没有之前收藏过的店？离这儿近不近？」——这时收藏夹帮不上忙。
+
+**橙子吃吃**把散落的「想吃」变成一张和朋友共享的美食地图：
+
+- 刷到感兴趣的美食，随手收藏进共享清单，朋友之间互相种草、共同维护
+- 到了景点，打开小程序地图，周边收藏过的店一目了然，直线距离清清楚楚，就近挑选
+- 还可以把景点也标进地图，出门前就把「去哪儿玩 + 附近吃什么」一起规划好
+- 按城市归档整理，跨城出游也不慌
 
 ## ✨ 特性
 
