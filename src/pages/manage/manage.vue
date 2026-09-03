@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { onShow, onShareAppMessage } from '@dcloudio/uni-app'
 import type { FolderView, GroupView, MemberView } from '@/types/group'
 import {
@@ -17,7 +17,6 @@ import {
   createFolder,
   updateFolder,
   deleteFolder,
-  mergeGroups,
   assignUncategorizedShops,
 } from '@/services/group'
 import { useGroupStore } from '@/stores/group'
@@ -61,14 +60,39 @@ const renamingFolder = ref(false)
 const removingFolder = ref(false)
 const assigningUncategorized = ref(false)
 
-const showingMerge = ref(false)
-const merging = ref(false)
-const mergeTargetGroupId = ref('')
-const mergeSourceIds = ref<string[]>([])
-
 const cloudMissing = ref(!state.ready)
 const recentPublicGroup = ref(store.getRecentPublicGroup())
 const initialLoaded = ref(false)
+
+const heroName = computed(() => currentGroup.value?.name || groups.value[0]?.name || '')
+const totalShops = computed(() => {
+  const fromFolders = folders.value.reduce((sum, f) => sum + (f.shopCount || 0), 0)
+  return fromFolders + uncategorizedCount.value
+})
+
+function initialOf(name: string) {
+  return (name || '?').trim().charAt(0) || '?'
+}
+
+function openGroupSwitcher() {
+  const names = groups.value.map((g) => g.name)
+  if (names.length <= 1) return
+  uni.showActionSheet({
+    itemList: names,
+    success: (res) => {
+      const g = groups.value[res.tapIndex]
+      if (g) switchGroup(g.id)
+    },
+  })
+}
+
+function confirmEditCurrentGroup() {
+  if (currentGroup.value) confirmEditGroup(currentGroup.value)
+}
+
+function confirmDeleteCurrentGroup() {
+  if (currentGroup.value) confirmDeleteGroup(currentGroup.value)
+}
 
 function loadGroups() {
   return listMyGroups().then((list) => {
@@ -79,40 +103,59 @@ function loadGroups() {
     if (cur) {
       currentGroupId.value = cur.id
       currentGroup.value = cur
-      if (previousGroupId !== cur.id) members.value = []
+      if (previousGroupId !== cur.id) {
+        members.value = []
+        folders.value = []
+        uncategorizedCount.value = 0
+      }
     } else {
       currentGroupId.value = ''
       currentGroup.value = null
       members.value = []
+      folders.value = []
+      uncategorizedCount.value = 0
     }
   })
 }
 
+let memberReqSeq = 0
+
 async function loadMembers() {
   if (!currentGroupId.value) return
+  const seq = ++memberReqSeq
+  const groupId = currentGroupId.value
   loadingMembers.value = true
   try {
-    members.value = await listMembers(currentGroupId.value)
+    const list = await listMembers(groupId)
+    if (seq !== memberReqSeq || currentGroupId.value !== groupId) return
+    members.value = list
   } catch {
+    if (seq !== memberReqSeq || currentGroupId.value !== groupId) return
     members.value = []
   } finally {
-    loadingMembers.value = false
+    if (seq === memberReqSeq) loadingMembers.value = false
   }
 }
 
+let folderReqSeq = 0
+
 async function loadFolders() {
   if (!currentGroupId.value) return
+  const seq = ++folderReqSeq
+  const groupId = currentGroupId.value
   loadingFolders.value = true
   try {
-    const res = await listFolders(currentGroupId.value)
+    const res = await listFolders(groupId)
+    if (seq !== folderReqSeq || currentGroupId.value !== groupId) return
     folders.value = res.folders
     uncategorizedCount.value = res.uncategorizedCount
     store.setFolders(folders.value)
   } catch {
+    if (seq !== folderReqSeq || currentGroupId.value !== groupId) return
     folders.value = []
     uncategorizedCount.value = 0
   } finally {
-    loadingFolders.value = false
+    if (seq === folderReqSeq) loadingFolders.value = false
   }
 }
 
@@ -246,63 +289,6 @@ function openAssignUncategorized() {
   })
 }
 
-function openMergePanel() {
-  const targets = groups.value.filter((g) => g.isOwner)
-  if (targets.length < 2) return
-  mergeTargetGroupId.value = currentGroupId.value || targets[0].id
-  mergeSourceIds.value = []
-  showingMerge.value = true
-}
-
-function toggleMergeSource(id: string) {
-  const idx = mergeSourceIds.value.indexOf(id)
-  if (idx >= 0) {
-    mergeSourceIds.value.splice(idx, 1)
-  } else {
-    mergeSourceIds.value.push(id)
-  }
-}
-
-function selectAllSources() {
-  const sources = groups.value
-    .filter((g) => g.isOwner && g.id !== mergeTargetGroupId.value)
-    .map((g) => g.id)
-  mergeSourceIds.value = sources
-}
-
-async function confirmMerge() {
-  if (!mergeTargetGroupId.value || mergeSourceIds.value.length === 0) {
-    uni.showToast({ title: '请选择要合并的清单', icon: 'none' })
-    return
-  }
-  uni.showModal({
-    title: '确认合并',
-    content: `将把 ${mergeSourceIds.value.length} 个清单的店铺与成员并入目标清单，合并后原清单会被删除。`,
-    confirmText: '合并',
-    confirmColor: '#36393B',
-    success: async (res) => {
-      if (!res.confirm) return
-      merging.value = true
-      try {
-        const result = await mergeGroups(mergeTargetGroupId.value, mergeSourceIds.value)
-        showingMerge.value = false
-        store.setCurrentGroup(result.group.id)
-        currentGroupId.value = result.group.id
-        currentGroup.value = result.group
-        await refresh()
-        uni.showToast({
-          title: `已合并：${result.mergedFolders} 个城市、${result.mergedShops} 家店`,
-          icon: 'none',
-        })
-      } catch (err) {
-        uni.showToast({ title: err instanceof Error ? err.message : '合并失败', icon: 'none' })
-      } finally {
-        merging.value = false
-      }
-    },
-  })
-}
-
 async function refresh() {
   const first = !initialLoaded.value
   if (first) showLoading()
@@ -332,13 +318,24 @@ async function handleCreate() {
   creating.value = true
   try {
     const res = await createGroup(gname, myName)
-    await loadGroups()
-    store.setCurrentGroup(res.group.id)
-    currentGroupId.value = res.group.id
-    currentGroup.value = res.group
+    const created = res.group
+    store.state.groups = [created, ...store.state.groups.filter((g) => g.id !== created.id)]
+    store.setCurrentGroup(created.id)
+    currentGroupId.value = created.id
+    currentGroup.value = created
+    members.value = []
+    folders.value = []
+    uncategorizedCount.value = 0
+    store.setFolders([])
     createMode.value = false
-    uni.showToast({ title: '创建成功', icon: 'success' })
+    try {
+      await loadGroups()
+    } catch {
+      // 服务端已创建成功，列表刷新失败时保留本地已并入的新清单，不再回滚
+    }
     await loadMembers()
+    await loadFolders()
+    uni.showToast({ title: '创建成功', icon: 'success' })
   } catch (err) {
     uni.showToast({ title: err instanceof Error ? err.message : '创建失败', icon: 'none' })
   } finally {
@@ -389,9 +386,12 @@ function confirmEditMyName(member: MemberView) {
 
 function switchGroup(id: string) {
   store.setCurrentGroup(id)
+  store.clearFolders()
   currentGroupId.value = id
   currentGroup.value = store.currentGroup()
   members.value = []
+  folders.value = []
+  uncategorizedCount.value = 0
   loadMembers()
   loadFolders()
 }
@@ -556,9 +556,18 @@ function confirmDeleteGroup(g: GroupView) {
           currentGroupId.value = ''
           currentGroup.value = null
           members.value = []
+          folders.value = []
+          uncategorizedCount.value = 0
+          store.clearFolders()
         }
-        await loadGroups()
-        store.setCurrentGroup(currentGroupId.value)
+        if (recentPublicGroup.value?.publicId === g.publicId) {
+          store.clearRecentPublicGroup()
+          recentPublicGroup.value = null
+        }
+        await refresh()
+        if (groups.value.length === 0) {
+          openCreateMode()
+        }
         uni.showToast({ title: '已删除', icon: 'none' })
       } catch (err) {
         uni.showToast({ title: err instanceof Error ? err.message : '删除失败', icon: 'none' })
@@ -583,27 +592,26 @@ onShow(() => {
 <template>
   <view class="manage-page">
     <global-loading />
-    <view v-if="cloudMissing" class="card warn-card">
+
+    <view v-if="cloudMissing" class="warn-card">
       <text class="warn-title">云环境未配置</text>
       <text class="muted">{{ state.message }}</text>
     </view>
 
     <view v-else-if="groups.length === 0 && !createMode && !recentPublicGroup" class="card empty-card">
-      <image class="empty-image" src="/static/tabbar/调皮.png" mode="aspectFit" />
       <text class="empty-title">创建你的第一份共享清单</text>
       <text class="muted">邀请朋友一起添加想吃的店</text>
       <button class="btn-primary" @click="openCreateMode">开始创建</button>
     </view>
 
     <view v-else-if="groups.length === 0 && !createMode && recentPublicGroup" class="card empty-card">
-      <text class="emoji">👀</text>
       <text class="empty-title">{{ recentPublicGroup.name }}</text>
       <text class="muted">当前为只读访客 · 加入清单后可添加店铺或景点</text>
       <button class="btn-primary" @click="viewPublicMap">查看公开地图</button>
       <button class="btn-plain" @click="openCreateMode">创建自己的清单</button>
     </view>
 
-    <view v-else-if="createMode" class="card">
+    <view v-else-if="createMode" class="card create-card">
       <text class="section-title">创建共享清单</text>
       <input v-model="groupName" class="input" placeholder="清单名称（1-30 字）" maxlength="30" />
       <input v-model="displayName" class="input" placeholder="你的名称（1-20 字）" maxlength="20" />
@@ -617,251 +625,206 @@ onShow(() => {
     </view>
 
     <template v-else>
-      <view class="card">
-        <text class="section-title">我的清单</text>
-        <view v-if="groups.length === 0" class="muted">还没有加入任何清单</view>
-        <view
-          v-for="g in groups"
-          :key="g.id"
-          class="group-item"
-          :class="{ active: g.id === currentGroupId }"
-          @click="switchGroup(g.id)"
-        >
-          <view class="group-info">
-            <text class="group-name">{{ g.name }}</text>
-            <text class="tag">{{ g.isOwner ? '创建者' : '成员' }}</text>
+      <!-- 当前清单 Hero -->
+      <view class="hero-section">
+        <view class="hero-card">
+          <view class="hero-header">
+            <view class="hero-info">
+              <view class="hero-label">当前清单</view>
+              <view class="hero-name">{{ heroName }}</view>
+              <view class="hero-meta">{{ currentGroup?.isOwner ? '你是创建者' : '你是成员' }}</view>
+            </view>
+            <view v-if="currentGroup?.isOwner" class="hero-actions">
+              <button class="mini-btn edit" @click="confirmEditCurrentGroup">编辑</button>
+              <button class="mini-btn delete" @click="confirmDeleteCurrentGroup">删除</button>
+            </view>
           </view>
-          <view class="group-actions">
-            <button
-              v-if="g.isOwner"
-              class="edit-btn"
-              :disabled="deleting"
-              @click.stop="confirmEditGroup(g)"
-            >
-              编辑
-            </button>
-            <button
-              v-if="g.isOwner"
-              class="remove-btn"
-              :disabled="deleting"
-              @click.stop="confirmDeleteGroup(g)"
-            >
-              删除
-            </button>
-            <text v-if="g.id === currentGroupId" class="check">✓</text>
+          <view class="hero-stats">
+            <view class="stat-item">
+              <text class="stat-value">{{ folders.length }}</text>
+              <text class="stat-label">城市</text>
+            </view>
+            <view class="stat-item">
+              <text class="stat-value">{{ totalShops }}</text>
+              <text class="stat-label">店铺</text>
+            </view>
+            <view class="stat-item">
+              <text class="stat-value">{{ members.length }}</text>
+              <text class="stat-label">成员</text>
+            </view>
           </view>
-        </view>
-        <view class="row-gap link-row">
-          <button class="btn-plain create-link" @click="openCreateMode">+ 创建新清单</button>
-          <button
-            v-if="groups.filter((g) => g.isOwner).length >= 2"
-            class="btn-plain create-link"
-            @click="openMergePanel"
-          >
-            合并旧清单
-          </button>
         </view>
       </view>
 
-      <view v-if="currentGroup" class="card">
-        <view class="section-row">
-          <text class="section-title">城市子清单</text>
-          <text class="muted">一次邀请，全部城市共享</text>
-        </view>
-        <text class="muted">在整体清单下按城市整理店铺与景点，添加时选择所属城市</text>
-        <view v-if="loadingFolders && folders.length === 0" class="muted">加载中…</view>
-        <view v-else-if="folders.length === 0" class="muted">还没有城市子清单</view>
-        <view v-else>
-          <view v-for="f in folders" :key="f.id" class="folder-row">
-            <view class="folder-info">
-              <text class="folder-name">{{ f.name }}</text>
-              <text v-if="f.shopCount !== undefined" class="muted">
-                {{ f.shopCount }} 家店
-              </text>
-              <text class="tag">{{ f.sortOrder + 1 }}</text>
-            </view>
-            <view class="group-actions">
-              <button
-                class="edit-btn"
-                :disabled="renamingFolder"
-                @click.stop="confirmEditFolder(f)"
-              >
-                改名
-              </button>
-              <button
-                class="remove-btn"
-                :disabled="removingFolder"
-                @click.stop="confirmDeleteFolder(f)"
-              >
-                删除
-              </button>
-            </view>
-          </view>
-        </view>
-        <view v-if="uncategorizedCount > 0" class="uncategorized-row">
-          <view class="folder-info">
-            <text class="folder-name muted-name">未分类</text>
-            <text class="muted">{{ uncategorizedCount }} 家店</text>
-          </view>
-          <view class="group-actions">
-            <button
-              class="edit-btn"
-              :disabled="assigningUncategorized"
-              @click.stop="openAssignUncategorized"
-            >
-              归类到…
-            </button>
-          </view>
-        </view>
-        <button
-          class="btn-plain create-link"
-          :disabled="creatingFolder"
-          @click="openCreateFolder"
-        >
-          + 新建城市
+      <!-- 切换清单 -->
+      <view class="switch-list">
+        <button v-if="groups.length > 1" class="switch-btn" @click="openGroupSwitcher">
+          切换清单
         </button>
       </view>
 
-      <view v-if="currentGroup" class="card">
-        <view class="section-row">
-          <text class="section-title">邀请朋友</text>
+      <!-- 城市子清单 -->
+      <view class="section-header">
+        <text class="section-title">城市子清单</text>
+      </view>
+
+      <view class="city-list">
+        <view v-for="f in folders" :key="f.id" class="city-row">
+          <view class="city-info">
+            <text class="city-name">{{ f.name }}</text>
+            <text class="city-count">{{ f.shopCount ?? 0 }} 家店</text>
+          </view>
+          <view class="city-actions">
+            <button class="mini-btn edit" :disabled="renamingFolder" @click="confirmEditFolder(f)">改名</button>
+            <button class="mini-btn delete" :disabled="removingFolder" @click="confirmDeleteFolder(f)">删除</button>
+          </view>
         </view>
-        <text class="muted">朋友无需加入就能浏览地图，确认加入后即可添加店铺或景点</text>
-        <view class="row-gap">
-          <button
-            class="btn-plain"
-            :disabled="!currentGroup.isOwner"
-            @click="handleRevokeInvite"
-          >
+
+        <view v-if="uncategorizedCount > 0" class="city-row">
+          <view class="city-info">
+            <text class="city-name muted-name">未分类</text>
+            <text class="city-count">{{ uncategorizedCount }} 家店</text>
+          </view>
+          <view class="city-actions">
+            <button class="mini-btn edit" :disabled="assigningUncategorized" @click="openAssignUncategorized">
+              归类
+            </button>
+          </view>
+        </view>
+
+        <view v-if="loadingFolders && folders.length === 0" class="muted-center">加载中…</view>
+        <view v-else-if="folders.length === 0 && uncategorizedCount === 0" class="muted-center">
+          还没有城市子清单，点击下方新建
+        </view>
+      </view>
+
+      <!-- 新建城市 -->
+      <view class="add-city-row">
+        <button class="add-city-btn" :disabled="creatingFolder" @click="openCreateFolder">
+          新建城市
+        </button>
+      </view>
+
+      <!-- 邀请朋友 -->
+      <view class="invite-card">
+        <view class="invite-title">邀请朋友</view>
+        <view class="invite-desc">朋友无需加入就能浏览地图，确认加入后即可添加店铺或景点</view>
+        <view class="invite-actions">
+          <button class="btn-secondary" :disabled="!currentGroup?.isOwner" @click="handleRevokeInvite">
             撤销全部邀请
           </button>
           <button
             class="btn-primary"
             :loading="generatingInvite"
-            :disabled="generatingInvite || !currentGroup.isOwner"
+            :disabled="generatingInvite || !currentGroup?.isOwner"
             @click="handleGenerateInvite"
           >
             生成邀请链接
           </button>
         </view>
-
-        <wd-popup v-model="showingInvite" position="bottom" custom-style="padding: 24rpx 32rpx 16rpx;">
-          <view class="popup-body">
-            <text class="section-title">邀请已生成</text>
-            <text class="muted">
-              7 天内有效，还可使用 {{ inviteRemaining }} 次。朋友扫码即可加入。
-            </text>
-            <view class="qr-wrap">
-              <view v-if="qrCodeLoading" class="qr-placeholder">
-                <text class="muted">小程序码生成中…</text>
-              </view>
-              <image
-                v-else-if="qrCodeFileId"
-                :src="qrCodeFileId"
-                class="qr-img"
-                mode="aspectFit"
-                @click="handleSaveQrCode"
-              />
-              <view v-else class="qr-placeholder">
-                <text class="muted">{{ qrCodeError || '小程序码生成失败' }}</text>
-                <button v-if="qrCodeError" class="btn-plain mini" @click="loadInviteQrCode">重试</button>
-              </view>
-            </view>
-            <view class="row-gap">
-              <button class="btn-plain" @click="handleRevokeInvite">撤销此邀请</button>
-              <button v-if="qrCodeFileId" class="btn-primary" @click="handleSaveQrCode">保存二维码到相册</button>
-            </view>
-          </view>
-        </wd-popup>
       </view>
 
-      <view class="card">
-        <view class="section-row">
-          <text class="section-title">成员</text>
-          <text v-if="currentGroup" class="muted">
-            {{ currentGroup.isOwner ? '创建者可管理全部' : '仅可管理自己添加的内容' }}
-          </text>
+      <!-- 成员 -->
+      <view class="member-card">
+        <view class="member-header">
+          <text class="member-title">成员</text>
+          <text class="member-hint">{{ currentGroup?.isOwner ? '创建者可管理全部' : '仅可管理自己添加的内容' }}</text>
         </view>
-        <view v-if="loadingMembers && members.length === 0" class="muted">加载中…</view>
-        <view v-else-if="members.length === 0" class="muted">暂无成员</view>
+        <view v-if="loadingMembers && members.length === 0" class="muted-center">加载中…</view>
+        <view v-else-if="members.length === 0" class="muted-center">暂无成员</view>
         <view v-else>
-          <view v-for="m in members" :key="m.id" class="member-row">
+          <view v-for="m in members" :key="m.id" class="member-item">
+            <view class="member-avatar">{{ initialOf(m.displayName) }}</view>
             <view class="member-info">
-              <text class="member-name">{{ m.displayName }}</text>
-              <text class="tag">{{ m.role === 'owner' ? '创建者' : '成员' }}</text>
-              <text v-if="m.isSelf" class="tag self">我</text>
+              <view class="member-name-row">
+                <text class="member-name">{{ m.displayName }}</text>
+                <text v-if="m.isSelf" class="member-self">我</text>
+                <text v-if="m.role === 'owner'" class="member-role owner">创建者</text>
+              </view>
             </view>
-            <button
-              v-if="m.isSelf"
-              class="edit-btn"
-              :disabled="updatingMyName"
-              @click="confirmEditMyName(m)"
-            >
-              修改我的名称
-            </button>
-            <button
-              v-else-if="currentGroup?.isOwner && m.role !== 'owner'"
-              class="remove-btn"
-              :disabled="removing"
-              @click="confirmRemove(m)"
-            >
-              移除
-            </button>
+            <view class="member-actions">
+              <button v-if="m.isSelf" class="mini-btn edit" :disabled="updatingMyName" @click="confirmEditMyName(m)">
+                修改名称
+              </button>
+              <button
+                v-else-if="currentGroup?.isOwner && m.role !== 'owner'"
+                class="mini-btn remove"
+                :disabled="removing"
+                @click="confirmRemove(m)"
+              >
+                移除
+              </button>
+            </view>
           </view>
         </view>
       </view>
 
-      <wd-popup v-model="showingMerge" position="bottom" custom-style="padding: 24rpx 32rpx 16rpx;">
+      <!-- 邀请二维码弹窗 -->
+      <wd-popup v-model="showingInvite" position="bottom" custom-style="padding: 24rpx 32rpx 16rpx;">
         <view class="popup-body">
-          <text class="section-title">合并旧清单</text>
-          <text class="muted">选择一个整体清单作为目标，把其他清单并入其中；原清单会按城市自动归类后删除。</text>
-          <text class="muted">目标清单</text>
-          <view class="group-picker-item" v-for="g in groups.filter((x) => x.isOwner)" :key="g.id" :class="{ active: mergeTargetGroupId === g.id }" @click="mergeTargetGroupId = g.id">
-            <text class="group-picker-name">{{ g.name }}</text>
-            <text v-if="mergeTargetGroupId === g.id" class="group-picker-check">✓</text>
-          </view>
-          <text class="muted">选择要并入的清单</text>
-          <view class="merge-tools">
-            <text class="merge-tool" @click="selectAllSources">全部选择</text>
-            <text class="merge-tool" @click="mergeSourceIds = []">清空</text>
-          </view>
-          <view class="group-picker-item" v-for="g in groups.filter((x) => x.isOwner && x.id !== mergeTargetGroupId)" :key="g.id" :class="{ active: mergeSourceIds.includes(g.id) }" @click="toggleMergeSource(g.id)">
-            <text class="group-picker-name">{{ g.name }}</text>
-            <text v-if="mergeSourceIds.includes(g.id)" class="group-picker-check">✓</text>
+          <text class="section-title">邀请已生成</text>
+          <text class="muted">
+            7 天内有效，还可使用 {{ inviteRemaining }} 次。朋友扫码即可加入。
+          </text>
+          <view class="qr-wrap">
+            <view v-if="qrCodeLoading" class="qr-placeholder">
+              <text class="muted">小程序码生成中…</text>
+            </view>
+            <image
+              v-else-if="qrCodeFileId"
+              :src="qrCodeFileId"
+              class="qr-img"
+              mode="aspectFit"
+              @click="handleSaveQrCode"
+            />
+            <view v-else class="qr-placeholder">
+              <text class="muted">{{ qrCodeError || '小程序码生成失败' }}</text>
+              <button v-if="qrCodeError" class="btn-plain mini" @click="loadInviteQrCode">重试</button>
+            </view>
           </view>
           <view class="row-gap">
-            <button class="btn-plain" @click="showingMerge = false">取消</button>
-            <button class="btn-primary" :loading="merging" :disabled="merging" @click="confirmMerge">
-              确认合并
-            </button>
+            <button class="btn-plain" @click="handleRevokeInvite">撤销此邀请</button>
+            <button v-if="qrCodeFileId" class="btn-primary" @click="handleSaveQrCode">保存二维码到相册</button>
           </view>
         </view>
       </wd-popup>
+
+      <view class="cta-space"></view>
     </template>
+
+    <!-- 底部创建新清单 -->
+    <view v-if="!createMode && groups.length > 0 && !cloudMissing" class="bottom-cta">
+      <button class="cta-btn" @click="openCreateMode">
+        <text>+</text>
+        <text>创建新清单</text>
+      </button>
+    </view>
   </view>
 </template>
 
 <style lang="scss" scoped>
 .manage-page {
-  padding: 24rpx;
+  min-height: 100vh;
+  background-color: #FAF8F5;
+  padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
+}
+
+/* ===== 卡片基础 ===== */
+.card {
+  background-color: #FFFFFF;
+  border: none;
+  border-radius: 40rpx;
+  padding: 40rpx 32rpx;
   display: flex;
   flex-direction: column;
   gap: 24rpx;
-}
-
-.card {
-  background-color: #FEF9FF;
-  border: 1rpx solid #36393B;
-  border-radius: 24rpx;
-  padding: 32rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 20rpx;
+  margin: 24rpx 32rpx;
+  box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.05);
 }
 
 .warn-card {
-  border-left: 8rpx solid #36393B;
-  background-color: #F5F5F5;
+  border-left: 8rpx solid #FF3B30;
+  background-color: #FFFFFF;
 }
 
 .empty-card {
@@ -874,49 +837,450 @@ onShow(() => {
   font-size: 72rpx;
 }
 
-.empty-image {
-  width: 120rpx;
-  height: 120rpx;
-  margin-bottom: 16rpx;
-}
-
 .empty-title {
   font-size: 36rpx;
   font-weight: 700;
-  color: #37291a;
-}
-
-.section-title {
-  font-size: 36rpx;
-  font-weight: 700;
-  color: #37291a;
-  letter-spacing: 0.5rpx;
-}
-
-.section-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.muted {
-  font-size: 26rpx;
-  color: #6B6F73;
-  line-height: 1.5;
+  color: #1C1C1E;
 }
 
 .warn-title {
   font-size: 32rpx;
   font-weight: 700;
-  color: #36393B;
+  color: #1C1C1E;
+}
+
+.muted {
+  font-size: 26rpx;
+  color: #8E8E93;
+  line-height: 1.6;
+}
+
+.muted-center {
+  font-size: 26rpx;
+  color: #8E8E93;
+  text-align: center;
+  padding: 32rpx 0;
+}
+
+.section-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #1C1C1E;
+  letter-spacing: 0.5rpx;
+}
+
+/* ===== Hero 当前清单 ===== */
+.hero-section {
+  padding: 8rpx 32rpx 20rpx;
+}
+
+.hero-card {
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 40rpx 32rpx;
+}
+
+.hero-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 32rpx;
+}
+
+.hero-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.hero-label {
+  font-size: 24rpx;
+  color: #8E8E93;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+  margin-bottom: 8rpx;
+}
+
+.hero-name {
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #1C1C1E;
+  margin-bottom: 12rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.hero-meta {
+  font-size: 28rpx;
+  color: #8E8E93;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+
+.hero-actions .mini-btn {
+  height: auto;
+  min-height: 0;
+  padding: 14rpx 28rpx;
+}
+
+.hero-stats {
+  display: flex;
+  gap: 48rpx;
+  padding-top: 32rpx;
+  border-top: 2rpx solid #F2F2F7;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.stat-value {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #1C1C1E;
+}
+
+.stat-label {
+  font-size: 24rpx;
+  color: #8E8E93;
+  font-weight: 500;
+}
+
+/* ===== 切换清单 ===== */
+.switch-list {
+  padding: 0 32rpx 4rpx;
+  display: flex;
+  gap: 16rpx;
+}
+
+.switch-btn {
+  flex: 1;
+  padding: 12rpx 24rpx;
+  background: #FFFFFF;
+  border: 2rpx dashed #E5E5EA;
+  border-radius: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #8E8E93;
+  font-family: inherit;
+
+  &::after {
+    border: none;
+  }
+}
+
+/* ===== 区块标题 ===== */
+.section-header {
+  padding: 16rpx 40rpx 12rpx;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.section-sub {
+  font-size: 26rpx;
+  color: #8E8E93;
+  font-weight: 500;
+}
+
+/* ===== 城市列表 ===== */
+.city-list {
+  margin: 0 32rpx;
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  max-height: 400rpx;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.city-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 30rpx 28rpx;
+  border-bottom: 2rpx solid #F2F2F7;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.city-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 16rpx;
+}
+
+.city-name {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1C1C1E;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.muted-name {
+  color: #8E8E93;
+}
+
+.city-count {
+  font-size: 24rpx;
+  color: #C7C7CC;
+  flex-shrink: 0;
+}
+
+.city-actions {
+  display: flex;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+
+/* ===== 小按钮 ===== */
+.mini-btn {
+  padding: 14rpx 28rpx;
+  border-radius: 24rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  border: none;
+  font-family: inherit;
+  line-height: 1.4;
+  height: auto;
+  min-height: 0;
+
+  &::after {
+    border: none;
+  }
+
+  &.edit {
+    background: #F2F2F7;
+    color: #3A3A3C;
+  }
+
+  &.delete,
+  &.remove {
+    background: #FFF0F0;
+    color: #FF3B30;
+  }
+}
+
+/* ===== 新建城市 ===== */
+.add-city-row {
+  padding: 8rpx 32rpx 0;
+}
+
+.add-city-btn {
+  width: 100%;
+  padding: 12rpx;
+  background: #FFFFFF;
+  border: 2rpx dashed #E5E5EA;
+  border-radius: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #8E8E93;
+  font-family: inherit;
+
+  &::after {
+    border: none;
+  }
+}
+
+/* ===== 邀请朋友 ===== */
+.invite-card {
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 28rpx;
+  margin: 20rpx 32rpx 0;
+}
+
+.invite-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #1C1C1E;
+  margin-bottom: 16rpx;
+}
+
+.invite-desc {
+  font-size: 28rpx;
+  color: #8E8E93;
+  line-height: 1.6;
+  margin-bottom: 32rpx;
+}
+
+.invite-actions {
+  display: flex;
+  gap: 20rpx;
+}
+
+.invite-actions .btn-secondary,
+.invite-actions .btn-primary {
+  height: 88rpx;
+  line-height: 88rpx;
+  min-height: 88rpx;
+  padding: 0 32rpx;
+  box-sizing: border-box;
+}
+
+.invite-actions .btn-secondary {
+  flex: 1;
+  border-radius: 32rpx;
+  border: 2rpx solid #E5E5EA;
+  background: #FFFFFF;
+  color: #3A3A3C;
+  font-size: 30rpx;
+  font-weight: 600;
+  font-family: inherit;
+
+  &::after {
+    border: none;
+  }
+}
+
+.invite-actions .btn-primary {
+  flex: 1.5;
+  border-radius: 32rpx;
+  border: none;
+  background: #1C1C1E;
+  color: #FFFFFF;
+  font-size: 30rpx;
+  font-weight: 600;
+  font-family: inherit;
+  box-shadow: 0 8rpx 28rpx rgba(0, 0, 0, 0.12);
+
+  &::after {
+    border: none;
+  }
+}
+
+/* ===== 成员 ===== */
+.member-card {
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 28rpx;
+  margin: 20rpx 32rpx 0;
+}
+
+.member-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
+.member-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1C1C1E;
+}
+
+.member-hint {
+  font-size: 24rpx;
+  color: #8E8E93;
+}
+
+.member-item {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  padding: 24rpx 0;
+  border-bottom: 2rpx solid #F2F2F7;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.member-avatar {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: #F2F2F7;
+  color: #3A3A3C;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.member-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.member-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.member-name {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1C1C1E;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.member-self {
+  flex: none;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #8E8E93;
+  border: 2rpx solid #D1D1D6;
+  border-radius: 10rpx;
+  padding: 2rpx 12rpx;
+}
+
+.member-role {
+  font-size: 22rpx;
+  font-weight: 600;
+  padding: 4rpx 16rpx;
+  border-radius: 12rpx;
+  flex-shrink: 0;
+
+  &.owner {
+    background: #1C1C1E;
+    color: #FFFFFF;
+  }
+}
+
+.member-actions {
+  display: flex;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+
+/* ===== 表单 ===== */
+.create-card {
+  margin-top: 24rpx;
 }
 
 .input {
-  height: 72rpx;
+  height: 80rpx;
   padding: 0 24rpx;
-  border-radius: 14rpx;
-  background-color: #FFFFFF;
-  border: 1rpx solid #36393B;
+  border-radius: 24rpx;
+  background-color: #F7F7F9;
+  border: 2rpx solid #E5E5EA;
   font-size: 28rpx;
 }
 
@@ -930,11 +1294,11 @@ onShow(() => {
 .btn-plain {
   flex: 1;
   border: none;
-  border-radius: 14rpx;
+  border-radius: 32rpx;
   font-size: 28rpx;
-  height: 72rpx;
-  line-height: 72rpx;
-  min-height: 72rpx;
+  height: 80rpx;
+  line-height: 80rpx;
+  min-height: 80rpx;
   padding: 0 28rpx;
 
   &::after {
@@ -943,225 +1307,16 @@ onShow(() => {
 }
 
 .btn-primary {
-  background-color: #36393B;
+  background-color: #1C1C1E;
   color: #FFFFFF;
 }
 
 .btn-plain {
-  background-color: #F5F5F5;
-  color: #36393B;
+  background-color: #F2F2F7;
+  color: #3A3A3C;
 }
 
-.create-link {
-  margin-top: 16rpx;
-  height: 64rpx;
-  line-height: 64rpx;
-  min-height: 64rpx;
-  font-size: 26rpx;
-  flex: none;
-  align-self: center;
-  padding: 0 36rpx;
-}
-
-.link-row {
-  justify-content: center;
-  align-items: center;
-}
-
-.folder-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 24rpx;
-  padding: 22rpx 0;
-  border-bottom: 1rpx solid #E5E5E5;
-}
-
-.folder-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-}
-
-.folder-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 30rpx;
-  color: #37291a;
-}
-
-.muted-name {
-  color: #8a8a8a;
-  font-style: italic;
-}
-
-.uncategorized-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 24rpx;
-  padding: 22rpx 0;
-  border-bottom: 1rpx solid #E5E5E5;
-}
-
-.group-picker-item {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  padding: 24rpx 20rpx;
-  border-radius: 14rpx;
-  background-color: #F5F5F5;
-  margin-top: 8rpx;
-
-  &.active {
-    background-color: #E5E5E5;
-  }
-}
-
-.group-picker-name {
-  flex: 1;
-  font-size: 28rpx;
-  color: #37291a;
-}
-
-.group-picker-check {
-  flex: none;
-  font-size: 28rpx;
-  color: #36393B;
-}
-
-.merge-tools {
-  display: flex;
-  gap: 24rpx;
-  margin-top: 4rpx;
-}
-
-.merge-tool {
-  font-size: 24rpx;
-  color: #36393B;
-  text-decoration: underline;
-  padding: 4rpx 0;
-}
-
-.group-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 28rpx;
-  border-radius: 18rpx;
-  background-color: #FEF9FF;
-  border: 1rpx solid #E5E5E5;
-
-  &.active {
-    border-color: #36393B;
-    background-color: #F5F5F5;
-  }
-}
-
-.group-info {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-}
-
-.group-actions {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-}
-
-.group-name {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #37291a;
-}
-
-.check {
-  color: #36393B;
-  font-weight: 700;
-  font-size: 36rpx;
-}
-
-.tag {
-  flex-shrink: 0;
-  font-size: 22rpx;
-  color: #36393B;
-  background-color: #F5F5F5;
-  border-radius: 8rpx;
-  padding: 4rpx 12rpx;
-
-  &.self {
-    background-color: #36393B;
-    color: #FFFFFF;
-  }
-}
-
-.member-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 24rpx;
-  padding: 22rpx 0;
-  border-bottom: 1rpx solid #E5E5E5;
-}
-
-.member-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-}
-
-.member-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 30rpx;
-  color: #37291a;
-}
-
-.remove-btn {
-  flex-shrink: 0;
-  white-space: nowrap;
-  background-color: transparent;
-  color: #36393B;
-  border: 1rpx solid #36393B;
-  border-radius: 14rpx;
-  font-size: 24rpx;
-  height: 52rpx;
-  line-height: 52rpx;
-  min-height: 52rpx;
-  padding: 0 24rpx;
-
-  &::after {
-    border: none;
-  }
-}
-
-.edit-btn {
-  flex-shrink: 0;
-  white-space: nowrap;
-  background-color: transparent;
-  color: #36393B;
-  border: 1rpx solid #36393B;
-  border-radius: 14rpx;
-  font-size: 24rpx;
-  height: 52rpx;
-  line-height: 52rpx;
-  min-height: 52rpx;
-  padding: 0 24rpx;
-
-  &::after {
-    border: none;
-  }
-}
-
+/* ===== 弹窗 ===== */
 .popup-body {
   display: flex;
   flex-direction: column;
@@ -1176,6 +1331,7 @@ onShow(() => {
     line-height: 64rpx;
     min-height: 64rpx;
     padding: 0 20rpx;
+    border-radius: 24rpx;
   }
 
   > .row-gap {
@@ -1214,7 +1370,47 @@ onShow(() => {
   width: 360rpx;
   height: 360rpx;
   border-radius: 16rpx;
-  background-color: #F5F5F5;
+  background-color: #F7F7F9;
   gap: 8rpx;
+}
+
+/* ===== 底部 CTA ===== */
+.cta-space {
+  height: 20rpx;
+}
+
+.bottom-cta {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--window-bottom, 0);
+  padding: 12rpx 40rpx 16rpx;
+  background: rgba(250, 248, 245, 0.92);
+  border-top: 2rpx solid rgba(0, 0, 0, 0.05);
+  z-index: 99;
+}
+
+.cta-btn {
+  width: 100%;
+  height: 72rpx;
+  line-height: 72rpx;
+  min-height: 72rpx;
+  padding: 0;
+  background: #1C1C1E;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 24rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.15);
+
+  &::after {
+    border: none;
+  }
 }
 </style>

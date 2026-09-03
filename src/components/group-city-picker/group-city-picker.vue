@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { FolderView, GroupView } from '@/types/group'
 import { listPublicFolders } from '@/services/group'
 
@@ -11,7 +11,7 @@ const props = withDefaults(
     options: GroupCityOption[]
     currentPublicId: string
     currentFolderFilter?: string
-    mode?: 'tree' | 'group'
+    mode?: 'tree' | 'columns' | 'group'
     title?: string
     hideAllOption?: boolean
     showUncategorizedAlways?: boolean
@@ -33,6 +33,29 @@ const emit = defineEmits<{
 const expandedPublicId = ref('')
 const loadingFolderPublicId = ref('')
 const folderCache = ref<Record<string, { folders: FolderView[]; uncategorizedCount: number }>>({})
+const inflightFolderPids = new Set<string>()
+
+const activeColumnPublicId = ref('')
+
+const columnOptions = computed(() => props.options)
+const activeColumnGroupName = computed(
+  () =>
+    columnOptions.value.find((o) => o.publicId === activeColumnPublicId.value)?.name || '',
+)
+const columnFolders = computed(() =>
+  activeColumnPublicId.value ? folderCache.value[activeColumnPublicId.value] : null,
+)
+const currentColumnFolderValue = computed(() => {
+  if (!activeColumnPublicId.value) return ''
+  if (activeColumnPublicId.value !== props.currentPublicId) return ''
+  return props.currentFolderFilter
+})
+const currentColumnFolderName = computed(() => {
+  if (currentColumnFolderValue.value === 'all') return '全部'
+  if (currentColumnFolderValue.value === 'none') return '未分类'
+  const f = columnFolders.value?.folders.find((x) => x.id === currentColumnFolderValue.value)
+  return f ? f.name : ''
+})
 
 watch(
   () => props.modelValue,
@@ -42,8 +65,21 @@ watch(
       expandedPublicId.value = props.currentPublicId
       void loadFolderCache(props.currentPublicId, true)
     }
+    if (props.mode === 'columns') {
+      activeColumnPublicId.value =
+        props.options.find((o) => o.publicId === props.currentPublicId)?.publicId ||
+        props.options[0]?.publicId ||
+        ''
+      if (activeColumnPublicId.value) {
+        void loadFolderCache(activeColumnPublicId.value, true)
+      }
+    }
   },
 )
+
+watch(activeColumnPublicId, (pid) => {
+  if (pid) void loadFolderCache(pid)
+})
 
 function folderDataOf(pid: string) {
   return folderCache.value[pid]
@@ -51,6 +87,8 @@ function folderDataOf(pid: string) {
 
 async function loadFolderCache(pid: string, force = false) {
   if (!force && folderCache.value[pid]) return
+  if (inflightFolderPids.has(pid)) return
+  inflightFolderPids.add(pid)
   loadingFolderPublicId.value = pid
   try {
     const res = await listPublicFolders(pid)
@@ -63,7 +101,8 @@ async function loadFolderCache(pid: string, force = false) {
       }
     }
   } finally {
-    loadingFolderPublicId.value = ''
+    inflightFolderPids.delete(pid)
+    if (loadingFolderPublicId.value === pid) loadingFolderPublicId.value = ''
   }
 }
 
@@ -84,6 +123,19 @@ function selectFolder(opt: GroupCityOption, folderValue?: string, folderName?: s
   emit('select', { publicId: opt.publicId, folderValue, folderName })
   close()
 }
+
+function selectColumnFolder(folderValue?: string, folderName?: string) {
+  const opt = columnOptions.value.find((o) => o.publicId === activeColumnPublicId.value)
+  if (!opt) return
+  emit('select', { publicId: opt.publicId, folderValue, folderName })
+  close()
+}
+
+function pickColumnGroup(publicId: string) {
+  if (publicId === activeColumnPublicId.value) return
+  activeColumnPublicId.value = publicId
+  void loadFolderCache(publicId)
+}
 </script>
 
 <template>
@@ -96,14 +148,68 @@ function selectFolder(opt: GroupCityOption, folderValue?: string, folderName?: s
     @update:model-value="(v: boolean) => emit('update:modelValue', v)"
   >
     <view class="gcp-body">
-      <view class="gcp-handle" />
       <view class="gcp-head">
         <text class="gcp-title">{{ title }}</text>
         <view class="gcp-close" @click="close">
           <text>✕</text>
         </view>
       </view>
-      <scroll-view scroll-y class="gcp-scroll">
+      <view v-if="mode === 'columns'" class="gcp-columns">
+        <scroll-view scroll-y class="gcp-column-left" :show-scrollbar="false">
+          <view
+            v-for="opt in options"
+            :key="opt.publicId"
+            class="gcp-col-item"
+            :class="{ active: activeColumnPublicId === opt.publicId }"
+            @click="pickColumnGroup(opt.publicId)"
+          >
+            <text class="gcp-col-item-name">{{ opt.name }}</text>
+          </view>
+        </scroll-view>
+        <scroll-view scroll-y class="gcp-column-right" :show-scrollbar="false">
+          <template v-if="activeColumnPublicId">
+            <view class="gcp-col-context">
+              <text class="gcp-col-context-group">{{ activeColumnGroupName }}</text>
+              <text class="gcp-col-context-sep">›</text>
+              <text class="gcp-col-context-city">{{ currentColumnFolderName || '选择城市' }}</text>
+            </view>
+            <view v-if="loadingFolderPublicId === activeColumnPublicId" class="gcp-col-loading">
+              加载中…
+            </view>
+            <template v-else>
+              <view
+                v-if="!hideAllOption"
+                class="gcp-col-option"
+                :class="{ selected: currentColumnFolderValue === 'all' }"
+                @click="selectColumnFolder('all')"
+              >
+                <text class="gcp-col-option-name">全部</text>
+              </view>
+              <view
+                v-if="
+                  (columnFolders?.uncategorizedCount ?? 0) > 0 || showUncategorizedAlways
+                "
+                class="gcp-col-option"
+                :class="{ selected: currentColumnFolderValue === 'none' }"
+                @click="selectColumnFolder('none', '未分类')"
+              >
+                <text class="gcp-col-option-name">未分类</text>
+              </view>
+              <view
+                v-for="f in columnFolders?.folders ?? []"
+                :key="f.id"
+                class="gcp-col-option"
+                :class="{ selected: currentColumnFolderValue === f.id }"
+                @click="selectColumnFolder(f.id, f.name)"
+              >
+                <text class="gcp-col-option-name">{{ f.name }}</text>
+              </view>
+            </template>
+          </template>
+          <view v-else class="gcp-col-loading">暂无清单</view>
+        </scroll-view>
+      </view>
+      <scroll-view v-else scroll-y class="gcp-scroll" :show-scrollbar="false">
         <template v-if="mode === 'tree'">
           <view class="gcp-section-label">选择清单</view>
           <view v-for="opt in options" :key="opt.publicId">
@@ -222,14 +328,6 @@ function selectFolder(opt: GroupCityOption, folderValue?: string, folderName?: s
   padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
 }
 
-.gcp-handle {
-  width: 80rpx;
-  height: 10rpx;
-  background: #d0d0d0;
-  border-radius: 6rpx;
-  margin: 0 auto 24rpx;
-}
-
 .gcp-head {
   display: flex;
   align-items: center;
@@ -259,6 +357,135 @@ function selectFolder(opt: GroupCityOption, folderValue?: string, folderName?: s
 
 .gcp-scroll {
   max-height: 70vh;
+}
+
+/* ===== 左右两列联动 ===== */
+.gcp-columns {
+  display: flex;
+  height: 62vh;
+  margin: 0 24rpx;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.gcp-column-left {
+  flex: none;
+  width: 220rpx;
+  background: #f7f5f2;
+  border-right: 1rpx solid #f0ede8;
+}
+
+.gcp-col-item {
+  position: relative;
+  padding: 30rpx 16rpx 30rpx 28rpx;
+}
+
+.gcp-col-item.active {
+  background: #ffffff;
+}
+
+.gcp-col-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6rpx;
+  height: 36rpx;
+  border-radius: 6rpx;
+  background: #36393b;
+}
+
+.gcp-col-item-name {
+  display: block;
+  font-size: 28rpx;
+  line-height: 1.35;
+  color: #6f6a63;
+}
+
+.gcp-col-item.active .gcp-col-item-name {
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.gcp-column-right {
+  flex: 1;
+  min-width: 0;
+  background: #ffffff;
+}
+
+.gcp-col-context {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 24rpx 28rpx 16rpx;
+}
+
+.gcp-col-context-group {
+  max-width: 200rpx;
+  font-size: 24rpx;
+  color: #999;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.gcp-col-context-sep {
+  font-size: 24rpx;
+  color: #ccc;
+}
+
+.gcp-col-context-city {
+  flex: 1;
+  font-size: 24rpx;
+  color: #36393b;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.gcp-col-loading {
+  padding: 40rpx 28rpx;
+  font-size: 26rpx;
+  color: #999;
+}
+
+.gcp-col-option {
+  position: relative;
+  margin: 0 12rpx 4rpx;
+  padding: 28rpx;
+  border-radius: 20rpx;
+}
+
+.gcp-col-option:active {
+  background: #f7f5f2;
+}
+
+.gcp-col-option.selected {
+  background: #f5f3ef;
+}
+
+.gcp-col-option.selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6rpx;
+  height: 32rpx;
+  border-radius: 6rpx;
+  background: #36393b;
+}
+
+.gcp-col-option-name {
+  display: block;
+  font-size: 30rpx;
+  color: #333;
+}
+
+.gcp-col-option.selected .gcp-col-option-name {
+  font-weight: 600;
+  color: #1a1a1a;
 }
 
 .gcp-section-label {

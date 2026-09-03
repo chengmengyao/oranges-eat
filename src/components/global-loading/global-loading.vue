@@ -24,7 +24,7 @@ const { state } = useGlobalLoading()
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(254, 249, 255, 0.7);
+  background-color: rgba(250, 248, 245, 0.7);
 }
 
 .global-loading-card {

@@ -59,11 +59,13 @@ export async function callFunction<T = unknown>(
   }
   const res = await wx.cloud.callFunction({ name, data })
   const payload = res.result as
-    | { ok?: boolean; error?: string; errorMessage?: string; errMsg?: string; data?: T }
+    | { ok?: boolean; error?: string; errorMessage?: string; errMsg?: string; code?: string; data?: T }
     | undefined
   if (!payload || payload.ok !== true) {
     const message = payload?.error || payload?.errorMessage || payload?.errMsg || '云函数调用失败'
-    throw new Error(message)
+    const error = new Error(message) as Error & { code?: string }
+    if (typeof payload?.code === 'string') error.code = payload.code
+    throw error
   }
   return payload.data as T
 }

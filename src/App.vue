@@ -22,6 +22,15 @@ view, text, button, input, textarea {
   box-sizing: border-box;
 }
 
+/* 滚动条静止时隐藏：滚动容器保留滚动能力，不显示常驻滚动条 */
+scroll-view ::-webkit-scrollbar,
+scroll-view::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+  background: transparent;
+}
+
 .button-primary {
   background-color: $pink-bright;
   color: #fff;

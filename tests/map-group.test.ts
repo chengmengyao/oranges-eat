@@ -1,6 +1,14 @@
-import { describe, expect, it } from 'vitest'
-import { resolveMapGroup } from '@/utils/map-group'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { resolveMapGroup, isRecentPublicGroupAvailable } from '@/utils/map-group'
 import type { GroupView } from '@/types/group'
+
+vi.mock('@/services/group', () => ({
+  getPublicGroup: vi.fn(),
+}))
+
+import { getPublicGroup } from '@/services/group'
+
+const mockedGetPublicGroup = vi.mocked(getPublicGroup)
 
 function group(id: string, publicId: string, name: string): GroupView {
   return {
@@ -58,5 +66,39 @@ describe('resolveMapGroup', () => {
     expect(selection.group?.name).toBe('最近访问的清单')
     expect(selection.group?.id).toBe('')
     expect(selection.isMember).toBe(false)
+  })
+})
+
+describe('isRecentPublicGroupAvailable', () => {
+  beforeEach(() => {
+    mockedGetPublicGroup.mockReset()
+  })
+
+  it('清单仍可公开访问时返回 true', async () => {
+    mockedGetPublicGroup.mockResolvedValue({
+      publicId: 'public-ok',
+      name: '有效的清单',
+      memberCount: 2,
+      inviteStatus: 'valid',
+      alreadyMember: false,
+    })
+    await expect(
+      isRecentPublicGroupAvailable({ publicId: 'public-ok', name: '有效的清单' }),
+    ).resolves.toBe(true)
+    expect(mockedGetPublicGroup).toHaveBeenCalledWith('public-ok')
+  })
+
+  it('清单已删除（不存在/不可访问）时返回 false', async () => {
+    mockedGetPublicGroup.mockRejectedValue(new Error('清单不存在或不可访问'))
+    await expect(
+      isRecentPublicGroupAvailable({ publicId: 'public-gone', name: '已删除的清单' }),
+    ).resolves.toBe(false)
+  })
+
+  it('网络等其他错误不能判定清单失效', async () => {
+    mockedGetPublicGroup.mockRejectedValue(new Error('cloud.callFunction:fail timeout'))
+    await expect(
+      isRecentPublicGroupAvailable({ publicId: 'public-net', name: '网络波动' }),
+    ).resolves.toBe(true)
   })
 })

@@ -195,6 +195,20 @@ async function listPublicMapShops(event) {
   return ok(res.data.map(toPublicShopView))
 }
 
+async function listMemberMapShops(event, openId) {
+  const groupId = normalizeText(event.groupId, 64)
+  if (!groupId) return fail('参数不完整', 'INVALID_PARAM')
+  const member = await findMember(groupId, openId)
+  if (!member) return fail('未加入该清单', 'FORBIDDEN')
+  const res = await db
+    .collection(SHOPS)
+    .where(buildShopQuery(groupId))
+    .orderBy('updatedAt', 'desc')
+    .limit(MAX_SHOPS_PER_GROUP)
+    .get()
+  return ok(res.data.map((s) => toShopView(s, member)))
+}
+
 async function listMemberShops(event, openId) {
   const groupId = normalizeText(event.groupId, 64)
   if (!groupId) return fail('参数不完整', 'INVALID_PARAM')
@@ -407,6 +421,7 @@ async function deleteShop(event, openId) {
 const actions = {
   listPublicShops,
   listPublicMapShops,
+  listMemberMapShops,
   listMemberShops,
   createShop,
   updateShop,

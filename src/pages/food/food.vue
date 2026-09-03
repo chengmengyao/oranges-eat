@@ -12,7 +12,7 @@ import {
 } from '@/services/shop'
 import { listMyGroups, listFolders, listPublicFolders, createFolder } from '@/services/group'
 import { useGroupStore } from '@/stores/group'
-import { resolveMapGroup } from '@/utils/map-group'
+import { resolveMapGroup, isRecentPublicGroupAvailable } from '@/utils/map-group'
 import { CATEGORY_LABELS, PAGE_SIZE } from '@/constants/shop'
 import { validateShopForm, normalizeText } from '@/utils/shop-validation'
 import { hideLoading, showLoading } from '@/utils/global-loading'
@@ -95,14 +95,29 @@ function isShopView(s: ShopView | PublicShopView): s is ShopView {
   return 'creatorName' in s
 }
 
+const groupsLoadSeq = ref(0)
+
 async function loadGroups() {
+  const seq = ++groupsLoadSeq.value
   const groups = await listMyGroups()
+  if (seq !== groupsLoadSeq.value) return
   store.setGroups(groups)
+  const recent = store.getRecentPublicGroup()
+  let recentAvailable = true
+  if (recent && !groups.some((g) => g.publicId === recent.publicId)) {
+    recentAvailable = await isRecentPublicGroupAvailable(recent)
+    if (seq !== groupsLoadSeq.value) return
+    if (!recentAvailable) {
+      // 最近访问的公开清单已被删除或失效：清理残留，避免在选择器里出现幽灵清单
+      store.clearRecentPublicGroup()
+    }
+  }
+  if (seq !== groupsLoadSeq.value) return
   const selection = resolveMapGroup(
     groups,
     store.state.currentGroupId,
     '',
-    store.getRecentPublicGroup(),
+    recentAvailable ? recent : null,
   )
   currentGroup.value = selection.group
   groupId.value = selection.isMember ? selection.group?.id || '' : ''
@@ -193,8 +208,9 @@ async function loadPage(reset: boolean) {
   } catch (err) {
     if (seq !== requestSeq.value) return
     const message = err instanceof Error ? err.message : '加载失败'
+    const code = (err as { code?: string } | null)?.code
     // 成员身份失效（被移除）：降级为公开只读
-    if (message.includes('未加入') || message.includes('FORBIDDEN')) {
+    if (code === 'FORBIDDEN' || message.includes('未加入') || message.includes('FORBIDDEN')) {
       isMember.value = false
       groupId.value = ''
       if (currentGroup.value) {
@@ -222,7 +238,8 @@ async function loadPage(reset: boolean) {
           errorMsg.value = publicMessage
           shops.value = []
           firstLoaded.value = true
-          if (publicMessage.includes('不存在') || publicMessage.includes('不可访问')) {
+          const publicCode = (publicErr as { code?: string } | null)?.code
+          if (publicCode === 'GROUP_NOT_FOUND' || publicMessage.includes('不存在') || publicMessage.includes('不可访问')) {
             store.clearRecentPublicGroup()
             currentGroup.value = null
             publicId.value = ''
@@ -411,6 +428,8 @@ async function onPickerSelect({
 }) {
   let switched = false
   if (pid !== publicId.value) {
+    const prevGroupId = store.state.currentGroupId
+    const prevRecent = store.getRecentPublicGroup()
     const g = store.state.groups.find((x) => x.publicId === pid)
     if (g) {
       store.setCurrentGroup(g.id)
@@ -419,7 +438,16 @@ async function onPickerSelect({
       if (opt) store.setRecentPublicGroup({ publicId: pid, name: opt.name })
     }
     folderFilter.value = 'all'
-    await loadGroups()
+    try {
+      await loadGroups()
+    } catch {
+      // 拉取失败：回滚存储指向，避免页面与当前清单不一致导致写入错清单
+      store.setCurrentGroup(prevGroupId)
+      if (prevRecent) store.setRecentPublicGroup(prevRecent)
+      else store.clearRecentPublicGroup()
+      uni.showToast({ title: '切换失败，请重试', icon: 'none' })
+      return
+    }
     switched = true
   }
   if (folderValue !== undefined && folderValue !== folderFilter.value) {
@@ -616,14 +644,15 @@ onReachBottom(() => {
     </view>
 
     <view v-else class="shop-list">
-      <view v-for="s in shops" :key="s.id" class="shop-card">
+      <view v-for="s in shops" :key="s.id" class="shop-card" :class="`cat-${s.category}`">
         <view class="shop-info" @click="showForm && (showForm = false)">
           <view class="shop-head">
             <text class="shop-name">{{ s.name }}</text>
             <text class="cat-tag">{{ CATEGORY_LABELS[s.category] }}</text>
           </view>
           <view class="shop-meta">
-            <text class="city-tag">{{ store.folderName(s.folderId) }}</text>
+            <text class="meta-pin">📍</text>
+            <text class="city-name">{{ store.folderName(s.folderId) }}</text>
           </view>
           <text class="shop-address">{{ s.address }}</text>
           <text v-if="s.remark" class="shop-remark">{{ s.remark }}</text>
@@ -672,7 +701,7 @@ onReachBottom(() => {
         </view>
 
         <input v-model="form.name" class="input" placeholder="名称（1-40 字）" maxlength="40" />
-        <wd-radio-group v-model="form.category">
+        <wd-radio-group v-model="form.category" direction="horizontal">
           <wd-radio value="restaurant">饭店</wd-radio>
           <wd-radio value="cake">甜品</wd-radio>
           <wd-radio value="milktea">饮品</wd-radio>
@@ -702,7 +731,7 @@ onReachBottom(() => {
       :options="groupPickerOptions"
       :current-public-id="publicId"
       :current-folder-filter="folderFilter"
-      mode="tree"
+      mode="columns"
       title="选择清单与城市"
       @select="onPickerSelect"
     />
@@ -712,7 +741,7 @@ onReachBottom(() => {
       :options="moveTargetOptions"
       :current-public-id="targetPublicId"
       :current-folder-filter="form.folderId || 'none'"
-      mode="tree"
+      mode="columns"
       title="选择清单与城市"
       :hide-all-option="true"
       :show-uncategorized-always="true"
@@ -758,6 +787,7 @@ onReachBottom(() => {
 <style lang="scss" scoped>
 .food-page {
   min-height: 100vh;
+  background-color: #FAF8F5;
   padding: 20rpx 24rpx calc(140rpx + env(safe-area-inset-bottom));
 }
 
@@ -765,16 +795,16 @@ onReachBottom(() => {
   position: sticky;
   top: 0;
   z-index: 100;
-  background-color: $page-bg;
+  background-color: #FAF8F5;
   margin: -20rpx -24rpx 0;
-  padding: 20rpx 24rpx 0;
+  padding: 20rpx 24rpx 12rpx;
 }
 
 .group-bar {
   display: flex;
   align-items: center;
   gap: 16rpx;
-  margin-bottom: 16rpx;
+  margin-bottom: 12rpx;
 
   &.switchable {
     align-self: flex-start;
@@ -782,59 +812,52 @@ onReachBottom(() => {
 }
 
 .group-arrow {
-  font-size: 24rpx;
-  color: #6B6F73;
+  font-size: 22rpx;
+  color: #8E8E93;
 }
 
 .group-name {
-  font-size: 30rpx;
+  font-size: 40rpx;
   font-weight: 700;
-  color: #37291a;
+  color: #1C1C1E;
 }
 
 .group-tag {
   font-size: 22rpx;
-  color: #36393B;
-  background-color: #F5F5F5;
-  border-radius: 8rpx;
-  padding: 4rpx 12rpx;
+  font-weight: 500;
+  color: #8E8E93;
+  background-color: #F2F2F7;
+  border-radius: 24rpx;
+  padding: 6rpx 24rpx;
 }
 
 .category-tabs {
   width: 100%;
   white-space: nowrap;
-  border-bottom: 1rpx solid #E5E5E5;
 }
 
 .category-tabs-inner {
   display: flex;
   align-items: center;
+  gap: 16rpx;
 }
 
 .category-tab {
-  position: relative;
   flex: 1 0 auto;
-  min-width: 120rpx;
-  padding: 22rpx 28rpx;
+  min-width: 132rpx;
+  padding: 16rpx 36rpx;
   text-align: center;
-  color: #6B6F73;
+  color: #3A3A3C;
   font-size: 28rpx;
+  font-weight: 500;
+  background-color: #FFFFFF;
+  border-radius: 40rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
 
   &.active {
-    color: #37291a;
-    font-weight: 700;
-
-    &::after {
-      position: absolute;
-      left: 50%;
-      bottom: 0;
-      width: 40rpx;
-      height: 6rpx;
-      border-radius: 999rpx;
-      background-color: #F6A623;
-      content: '';
-      transform: translateX(-50%);
-    }
+    color: #FFFFFF;
+    font-weight: 600;
+    background-color: #1C1C1E;
   }
 }
 
@@ -844,7 +867,7 @@ onReachBottom(() => {
   align-items: center;
   gap: 20rpx;
   padding: 48rpx 32rpx;
-  color: #6B6F73;
+  color: #8E8E93;
 
   button {
     height: 56rpx;
@@ -863,66 +886,119 @@ onReachBottom(() => {
 }
 
 .shop-card {
-  background-color: #FEF9FF;
-  border: 1rpx solid #E5E5E5;
-  border-radius: 24rpx;
-  padding: 32rpx 28rpx;
+  background-color: #FFFFFF;
+  border: none;
+  border-radius: 40rpx;
+  padding: 36rpx 32rpx;
+  box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.05);
+  animation: shopSlideUp 0.45s ease-out forwards;
+}
+
+@keyframes shopSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16rpx);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .shop-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 20rpx;
 }
 
 .shop-meta {
-  margin-top: 10rpx;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  margin-top: 12rpx;
 }
 
-.city-tag {
-  display: inline-block;
-  font-size: 22rpx;
-  color: #36393B;
-  background-color: #F5F5F5;
-  border-radius: 8rpx;
-  padding: 4rpx 12rpx;
+.meta-pin {
+  font-size: 24rpx;
+}
+
+.city-name {
+  font-size: 26rpx;
+  color: #8E8E93;
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .shop-name {
-  font-size: 36rpx;
+  flex: 1;
+  min-width: 0;
+  font-size: 34rpx;
   font-weight: 700;
-  color: #37291a;
+  color: #1C1C1E;
+  line-height: 1.3;
   letter-spacing: 0.5rpx;
 }
 
 .cat-tag {
-  font-size: 22rpx;
-  color: #36393B;
-  background-color: #F5F5F5;
-  border-radius: 8rpx;
-  padding: 4rpx 12rpx;
+  flex-shrink: 0;
+  font-size: 24rpx;
+  padding: 8rpx 20rpx;
+  border-radius: 20rpx;
+  font-weight: 600;
+}
+
+.cat-restaurant .cat-tag {
+  color: #34C759;
+  background-color: #E8F9EE;
+}
+
+.cat-cake .cat-tag {
+  color: #FF9500;
+  background-color: #FFF5E6;
+}
+
+.cat-milktea .cat-tag {
+  color: #007AFF;
+  background-color: #E8F2FF;
+}
+
+.cat-spot .cat-tag {
+  color: #AF52DE;
+  background-color: #F5E8FF;
 }
 
 .shop-address {
   display: block;
-  margin-top: 16rpx;
-  font-size: 28rpx;
-  color: #6B6F73;
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #C7C7CC;
   line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  margin-bottom: 28rpx;
 }
 
 .shop-remark {
   display: block;
   margin-top: 10rpx;
-  font-size: 28rpx;
-  color: #37291a;
+  margin-bottom: 20rpx;
+  font-size: 26rpx;
+  color: #8E8E93;
   line-height: 1.5;
 }
 
 .shop-actions {
-  display: block;
-  margin-top: 20rpx;
-  text-align: right;
+  display: flex;
+  justify-content: flex-end;
+  gap: 16rpx;
+  margin-top: 4rpx;
   font-size: 0;
 
   button {
@@ -930,11 +1006,7 @@ onReachBottom(() => {
     vertical-align: middle;
     width: auto;
     min-width: 0;
-    margin-left: 16rpx;
-
-    &:first-child {
-      margin-left: 0;
-    }
+    margin: 0;
 
     &::after {
       display: none;
@@ -944,12 +1016,13 @@ onReachBottom(() => {
 
 .act-btn {
   border: none;
-  border-radius: 16rpx;
+  border-radius: 28rpx;
   font-size: 26rpx;
-  height: 56rpx;
-  line-height: 56rpx;
-  min-height: 56rpx;
-  padding: 0 24rpx;
+  font-weight: 600;
+  height: 64rpx;
+  line-height: 64rpx;
+  min-height: 64rpx;
+  padding: 0 32rpx;
   width: auto;
   display: inline-block;
   vertical-align: middle;
@@ -960,14 +1033,18 @@ onReachBottom(() => {
   }
 
   &.edit {
-    background-color: #36393B;
-    color: #FFFFFF;
+    background-color: #FFFFFF;
+    color: #3A3A3C;
+    border: 2rpx solid #E5E5EA;
   }
 
   &.del {
-    background-color: transparent;
-    color: #36393B;
-    border: 1rpx solid #36393B;
+    background-color: #FF3B30;
+    color: #FFFFFF;
+
+    &[disabled] {
+      opacity: 0.5;
+    }
   }
 }
 
@@ -978,7 +1055,7 @@ onReachBottom(() => {
 
 .muted {
   font-size: 24rpx;
-  color: #6B6F73;
+  color: #8E8E93;
 }
 
 .btn-primary,
@@ -995,7 +1072,7 @@ onReachBottom(() => {
 }
 
 .btn-primary {
-  background-color: #36393B;
+  background-color: #1C1C1E;
   color: #FFFFFF;
 }
 
@@ -1007,17 +1084,18 @@ onReachBottom(() => {
 .fab {
   position: fixed;
   right: 40rpx;
-  bottom: calc(140rpx + env(safe-area-inset-bottom));
-  width: 96rpx;
-  height: 96rpx;
+  bottom: calc(100rpx + env(safe-area-inset-bottom));
+  width: 112rpx;
+  height: 112rpx;
   border-radius: 50%;
-  background-color: #36393B;
+  background-color: #1C1C1E;
   color: #FFFFFF;
-  font-size: 48rpx;
-  line-height: 96rpx;
+  font-size: 56rpx;
+  font-weight: 300;
+  line-height: 112rpx;
   text-align: center;
   padding: 0;
-  box-shadow: 0 8rpx 24rpx rgba(54, 57, 59, 0.30);
+  box-shadow: 0 16rpx 48rpx rgba(0, 0, 0, 0.2);
   border: none;
 
   &::after {

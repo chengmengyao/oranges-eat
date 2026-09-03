@@ -1,5 +1,6 @@
 import type { GroupView } from '@/types/group'
 import type { RecentPublicGroup } from '@/stores/group'
+import { getPublicGroup } from '@/services/group'
 
 export interface MapGroupSelection {
   group: GroupView | null
@@ -45,4 +46,25 @@ export function resolveMapGroup(
     return { group: visitorGroup(recent), publicId: recent.publicId, isMember: false }
   }
   return { group: null, publicId: '', isMember: false }
+}
+
+export function isGroupNotFoundError(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code
+  if (code === 'GROUP_NOT_FOUND') return true
+  // 兜底：云端未带 code 时按历史文案判断
+  const message = err instanceof Error ? err.message : ''
+  return message.includes('不存在') || message.includes('不可访问')
+}
+
+// 校验最近访问的公开清单当前是否仍可访问。
+// 明确提示清单不存在/不可访问（已被删除或失效）时返回 false；网络等其他错误不算失效。
+export async function isRecentPublicGroupAvailable(
+  recent: RecentPublicGroup,
+): Promise<boolean> {
+  try {
+    await getPublicGroup(recent.publicId)
+    return true
+  } catch (err) {
+    return !isGroupNotFoundError(err)
+  }
 }

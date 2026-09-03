@@ -36,6 +36,13 @@ export async function listPublicMapShops(
   })
 }
 
+export async function listMemberMapShops(groupId: string): Promise<ShopView[]> {
+  return callFunction('shopApi', {
+    action: 'listMemberMapShops',
+    groupId,
+  })
+}
+
 export async function listMemberShops(
   groupId: string,
   cursor?: string,

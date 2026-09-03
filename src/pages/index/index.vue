@@ -3,7 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import type { PublicShopView, ShopView } from '@/types/shop'
 import type { FolderView, GroupView } from '@/types/group'
-import { listPublicMapShops } from '@/services/shop'
+import { listMemberMapShops, listPublicMapShops } from '@/services/shop'
 import { listMyGroups, listPublicFolders } from '@/services/group'
 import { useGroupStore } from '@/stores/group'
 import { CATEGORY_LABELS, SHOP_CATEGORIES } from '@/constants/shop'
@@ -15,7 +15,7 @@ import {
   openLocationSettings,
 } from '@/utils/location'
 import { formatDistance, haversineDistance, sortByDistance } from '@/utils/geo'
-import { resolveMapGroup } from '@/utils/map-group'
+import { resolveMapGroup, isRecentPublicGroupAvailable } from '@/utils/map-group'
 import { hideLoading, showLoading } from '@/utils/global-loading'
 import {
   buildMarkers,
@@ -168,7 +168,7 @@ function buildMarkerView(list: (ShopView | PublicShopView)[]) {
         color: '#37291a',
         fontSize: 12,
         borderRadius: 6,
-        bgColor: '#FEF9FF',
+        bgColor: '#FAF8F5',
         padding: 6,
         display: 'BY_CLICK' as const,
       },
@@ -234,8 +234,16 @@ async function loadGroups(seq: number) {
 
   const recent = store.getRecentPublicGroup()
   const options: (GroupView | { id: ''; publicId: string; name: string })[] = [...groups]
+  let recentAvailable = true
   if (recent && !groups.some((g) => g.publicId === recent.publicId)) {
-    options.push({ id: '', publicId: recent.publicId, name: recent.name })
+    recentAvailable = await isRecentPublicGroupAvailable(recent)
+    if (seq !== refreshSeq) return false
+    if (recentAvailable) {
+      options.push({ id: '', publicId: recent.publicId, name: recent.name })
+    } else {
+      // 最近访问的公开清单已被删除或失效：清理残留，避免在选择器里出现幽灵清单
+      store.clearRecentPublicGroup()
+    }
   }
   groupOptions.value = options
 
@@ -243,7 +251,7 @@ async function loadGroups(seq: number) {
     groups,
     store.state.currentGroupId,
     requestedPublicId.value,
-    recent,
+    recentAvailable ? recent : null,
   )
   const publicIdChanged = publicId.value !== selection.publicId
   currentGroup.value = selection.group
@@ -263,8 +271,10 @@ async function loadGroups(seq: number) {
 
 async function loadShops() {
   const seq = ++shopRequestSeq
+  const memberGroupId = currentGroup.value?.id || ''
+  const isMemberView = isMember.value && Boolean(memberGroupId)
   const targetPublicId = publicId.value
-  if (!targetPublicId) {
+  if (!isMemberView && !targetPublicId) {
     clearShopState()
     errorMsg.value = ''
     loadFailed.value = false
@@ -278,7 +288,31 @@ async function loadShops() {
   loadFailed.value = false
   let loadedShops: (ShopView | PublicShopView)[] | null = null
   try {
-    const list = await listPublicMapShops(targetPublicId)
+    let list: (ShopView | PublicShopView)[]
+    if (isMemberView) {
+      try {
+        list = await listMemberMapShops(memberGroupId)
+      } catch (err) {
+        // 仅当明确被移除/失去权限时才降级为公开只读，避免网络抖动被误判为访客
+        const message = err instanceof Error ? err.message : ''
+        const code = (err as { code?: string } | null)?.code
+        const memberRemoved =
+          code === 'FORBIDDEN' || message.includes('未加入') || message.includes('FORBIDDEN')
+        if (!memberRemoved) throw err
+        isMember.value = false
+        if (currentGroup.value) {
+          currentGroup.value = {
+            ...currentGroup.value,
+            id: '',
+            role: 'member',
+            isOwner: false,
+          }
+        }
+        list = await listPublicMapShops(targetPublicId)
+      }
+    } else {
+      list = await listPublicMapShops(targetPublicId)
+    }
     if (seq !== shopRequestSeq || targetPublicId !== publicId.value) return
     shops.value = list
     buildMarkerView(visibleShops.value)
@@ -567,7 +601,7 @@ onUnload(() => {
       :options="groupOptions"
       :current-public-id="publicId"
       :current-folder-filter="folderFilter"
-      mode="tree"
+      mode="columns"
       @select="onPickerSelect"
     />
 
@@ -577,12 +611,7 @@ onUnload(() => {
     </view>
 
     <view v-if="showEmptyState" class="empty-tip">
-      <image class="empty-icon" src="/static/tabbar/调皮.png" mode="aspectFit" />
-      <view class="empty-copy">
-        <text class="empty-text">清单里还没有内容</text>
-        <text v-if="!isMember" class="empty-sub">快让朋友添加第一家好吃的吧</text>
-        <text v-else class="empty-sub">在地图上点亮第一站</text>
-      </view>
+      <text class="empty-text">清单里还没有内容</text>
       <text v-if="isMember" class="empty-action" @click="goAddShop">去添加 ›</text>
     </view>
 
@@ -635,7 +664,7 @@ onUnload(() => {
           <button class="retry-btn" @click="onGetLocation">获取位置</button>
         </view>
         <view v-else-if="nearbyList.length === 0" class="sheet-empty">还没有内容</view>
-        <scroll-view v-else scroll-y class="nearby-list">
+        <scroll-view v-else scroll-y class="nearby-list" :show-scrollbar="false">
           <view
             v-for="(s, idx) in nearbyList"
             :key="s.id"
@@ -675,7 +704,7 @@ onUnload(() => {
   align-items: center;
   justify-content: center;
   gap: 20rpx;
-  background-color: #efe9d9;
+  background-color: #FAF8F5;
   color: #6B6F73;
 }
 
@@ -712,11 +741,10 @@ onUnload(() => {
   position: absolute;
   left: 16rpx;
   right: 16rpx;
-  bottom: calc(160rpx + env(safe-area-inset-bottom));
+  bottom: calc(24rpx + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 16rpx;
+  justify-content: space-between;
   background-color: rgba(255, 255, 255, 0.95);
   border: 1rpx solid #36393B;
   border-radius: 999rpx;
@@ -739,39 +767,20 @@ onUnload(() => {
   position: absolute;
   left: 16rpx;
   right: 16rpx;
-  bottom: calc(160rpx + env(safe-area-inset-bottom));
+  bottom: calc(24rpx + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
-  gap: 16rpx;
+  justify-content: space-between;
   background-color: rgba(255, 255, 255, 0.95);
   border: 1rpx solid #36393B;
   border-radius: 999rpx;
-  padding: 12rpx 32rpx;
+  padding: 16rpx 32rpx;
   box-shadow: 0 4rpx 16rpx rgba(54, 57, 59, 0.10);
-}
-
-.empty-icon {
-  width: 56rpx;
-  height: 56rpx;
-  flex: none;
-}
-
-.empty-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 2rpx;
-  flex: 1;
-  min-width: 0;
 }
 
 .empty-text {
   font-size: 26rpx;
-  font-weight: 600;
-  color: #37291a;
-}
-
-.empty-sub {
-  font-size: 22rpx;
+  font-weight: 400;
   color: #6B6F73;
 }
 
@@ -788,7 +797,7 @@ onUnload(() => {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  background-color: #FEF9FF;
+  background-color: #FAF8F5;
   border: 1rpx solid #E5E5E5;
   border-radius: 999rpx;
   padding: 10rpx 20rpx;
@@ -923,7 +932,7 @@ onUnload(() => {
   left: 16rpx;
   right: 16rpx;
   bottom: calc(24rpx + env(safe-area-inset-bottom));
-  background-color: #FEF9FF;
+  background-color: #FAF8F5;
   border-radius: 20rpx;
   padding: 24rpx;
   box-shadow: 0 8rpx 32rpx rgba(54, 57, 59, 0.18);
@@ -1027,7 +1036,7 @@ onUnload(() => {
   right: 0;
   bottom: 0;
   height: 60vh;
-  background-color: #FEF9FF;
+  background-color: #FAF8F5;
   border-radius: 24rpx 24rpx 0 0;
   padding: 24rpx;
   display: flex;
