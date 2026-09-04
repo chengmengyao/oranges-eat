@@ -9,6 +9,7 @@ import {
 } from '@/services/group'
 import { useGroupStore } from '@/stores/group'
 import { parseInviteEntry } from '@/utils/invite-entry'
+import { openPublicMap } from '@/utils/public-open'
 import { hideLoading, showLoading } from '@/utils/global-loading'
 
 const store = useGroupStore()
@@ -61,8 +62,8 @@ function goManage() {
 function viewMap() {
   if (!publicId.value) return
   token.value = ''
-  store.setRecentPublicGroup({ publicId: publicId.value, name: preview.value?.name || '美食清单' })
-  uni.reLaunch({ url: `/pages/index/index?publicId=${encodeURIComponent(publicId.value)}` })
+  store.setRecentPublicGroup({ publicId: publicId.value, name: preview.value?.name || '美食地图' })
+  openPublicMap(publicId.value, preview.value?.name || '美食地图')
 }
 
 async function confirmJoin() {
@@ -90,7 +91,7 @@ async function confirmJoin() {
     store.setRecentPublicGroup({ publicId: res.publicId, name: res.name })
     uni.showToast({ title: '加入成功', icon: 'success' })
     setTimeout(() => {
-      uni.reLaunch({ url: `/pages/index/index?publicId=${encodeURIComponent(res.publicId)}` })
+      openPublicMap(res.publicId, res.name)
     }, 600)
   } catch (err) {
     joinError.value = err instanceof Error ? err.message : '邀请无效或已过期'
@@ -121,7 +122,7 @@ onLoad((query) => {
         <text class="tag">共享美食地图</text>
         <text class="hero-title">一起收藏好吃的</text>
         <text class="hero-copy">
-          {{ mode === 'invite' ? '朋友邀请你共同维护一份美食清单' : '你正在查看一份朋友分享的美食清单' }}
+          {{ mode === 'invite' ? '朋友邀请你共同维护一张美食地图' : '你正在查看一份朋友分享的美食地图' }}
         </text>
 
         <view class="preview-card">

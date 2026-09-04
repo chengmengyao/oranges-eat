@@ -80,3 +80,29 @@ describe('当前定位', () => {
     await expect(hasLocationPermission()).resolves.toBe(true)
   })
 })
+
+describe('H5 定位权限探测', () => {
+  it('无 getSetting 时按 Permissions API 判定已授权', async () => {
+    const query = vi.fn(() => Promise.resolve({ state: 'granted' }))
+    vi.stubGlobal('uni', {})
+    vi.stubGlobal('navigator', { permissions: { query } })
+
+    await expect(hasLocationPermission()).resolves.toBe(true)
+    expect(query).toHaveBeenCalledWith({ name: 'geolocation' })
+  })
+
+  it('Permisissions API 返回拒绝时判定未授权', async () => {
+    const query = vi.fn(() => Promise.resolve({ state: 'denied' }))
+    vi.stubGlobal('uni', {})
+    vi.stubGlobal('navigator', { permissions: { query } })
+
+    await expect(hasLocationPermission()).resolves.toBe(false)
+  })
+
+  it('无 Permissions API 时默认允许发起定位', async () => {
+    vi.stubGlobal('uni', {})
+    vi.stubGlobal('navigator', undefined)
+
+    await expect(hasLocationPermission()).resolves.toBe(true)
+  })
+})

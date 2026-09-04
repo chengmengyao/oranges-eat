@@ -4,7 +4,7 @@ import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import type { PublicShopView, ShopView } from '@/types/shop'
 import type { FolderView, GroupView } from '@/types/group'
 import { listMemberMapShops, listPublicMapShops } from '@/services/shop'
-import { listMyGroups, listPublicFolders } from '@/services/group'
+import { getPublicGroup, listMyGroups, listPublicFolders } from '@/services/group'
 import { useGroupStore } from '@/stores/group'
 import { CATEGORY_LABELS, SHOP_CATEGORIES } from '@/constants/shop'
 import {
@@ -17,6 +17,7 @@ import {
 import { formatDistance, haversineDistance, sortByDistance } from '@/utils/geo'
 import { resolveMapGroup, isRecentPublicGroupAvailable } from '@/utils/map-group'
 import { hideLoading, showLoading } from '@/utils/global-loading'
+import { takeQueuedOpenPublic } from '@/utils/public-open'
 import {
   buildMarkers,
   findShopIdByMarker,
@@ -70,6 +71,7 @@ const locating = ref(false)
 const currentGroup = ref<GroupView | null>(null)
 const publicId = ref('')
 const requestedPublicId = ref('')
+const requestedName = ref('')
 const isMember = ref(false)
 
 const groupOptions = ref<(GroupView | { id: ''; publicId: string; name: string })[]>([])
@@ -232,6 +234,32 @@ async function loadGroups(seq: number) {
   groupsSettled.value = true
   store.setGroups(groups)
 
+  // URL 锚点 / 待直达公开清单（分享、邀请进入）只在首次转正为全局视图，之后不再常驻覆盖：
+  // 这样在其它页签切换清单后回到地图也会跟随最新选择。
+  if (requestedPublicId.value) {
+    const reqPid = requestedPublicId.value
+    requestedPublicId.value = ''
+    const reqName = requestedName.value
+    requestedName.value = ''
+    if (groups.some((g) => g.publicId === reqPid)) {
+      store.switchByPublicId(reqPid)
+    } else {
+      // 目标不在我的清单里：以可信的真实清单名写入 recent，供 resolveMapGroup 命中公开分支，
+      // 避免沿用上一个最近访问清单的名字导致错标、或被成员清单顶回而丢失直达目标。
+      let targetName = reqName || ''
+      if (!targetName) {
+        try {
+          targetName = (await getPublicGroup(reqPid)).name
+        } catch {
+          if (seq !== refreshSeq) return false
+          targetName = ''
+        }
+      }
+      // 名字未知（清单不可访问）时不切换，交给下方既有兜底逻辑
+      if (targetName) store.switchToPublic(reqPid, targetName)
+    }
+  }
+
   const recent = store.getRecentPublicGroup()
   const options: (GroupView | { id: ''; publicId: string; name: string })[] = [...groups]
   let recentAvailable = true
@@ -249,8 +277,7 @@ async function loadGroups(seq: number) {
 
   const selection = resolveMapGroup(
     groups,
-    store.state.currentGroupId,
-    requestedPublicId.value,
+    store.state.view,
     recentAvailable ? recent : null,
   )
   const publicIdChanged = publicId.value !== selection.publicId
@@ -373,14 +400,16 @@ function onFolderFilterChange(value: string) {
 async function refresh() {
   const seq = ++refreshSeq
   const first = !loadedOnce.value
-  if (first) showLoading()
+  const stale = store.consumeDataStale()
+  const withLoading = first || stale
+  if (withLoading) showLoading()
   try {
     if (!(await loadGroups(seq)) || seq !== refreshSeq) return
     loadedOnce.value = true
     await loadFolders()
     await loadShops()
   } finally {
-    if (seq === refreshSeq) hideLoading()
+    if (withLoading && seq === refreshSeq) hideLoading()
   }
 }
 
@@ -509,7 +538,6 @@ function onPickerSelect({ publicId: pid, folderValue }: { publicId: string; fold
     refreshSeq += 1
     requestedPublicId.value = ''
     groupsSettled.value = true
-    publicId.value = pid
     selectedShop.value = null
     showDetail.value = false
     highlightShopId.value = ''
@@ -527,8 +555,9 @@ function onPickerSelect({ publicId: pid, folderValue }: { publicId: string; fold
         isOwner: false,
       }
       isMember.value = false
-      store.setRecentPublicGroup({ publicId: pid, name: opt.name })
+      store.switchToPublic(pid, opt.name)
     }
+    publicId.value = pid
     loadedOnce.value = true
     folderFilter.value = 'all'
     void loadFolders()
@@ -540,12 +569,17 @@ function onPickerSelect({ publicId: pid, folderValue }: { publicId: string; fold
 }
 
 onLoad((query) => {
-  if (query?.publicId) {
+  // H5 端 reLaunch 到 tab 首页的 URL 参数会丢失，先消费本地暂存的待直达公开清单；
+  // 分享卡片等外部直达仍走 URL query 兜底。
+  const queued = takeQueuedOpenPublic()
+  const rawPid = (queued?.publicId || query?.publicId) as string | undefined
+  if (rawPid) {
     try {
-      requestedPublicId.value = decodeURIComponent(query.publicId as string)
+      requestedPublicId.value = decodeURIComponent(rawPid)
     } catch {
-      requestedPublicId.value = query.publicId as string
+      requestedPublicId.value = rawPid
     }
+    if (queued?.name) requestedName.value = queued.name
     publicId.value = requestedPublicId.value
   }
 })
@@ -626,11 +660,13 @@ onUnload(() => {
     </view>
 
     <view class="fab-group">
-      <view class="fab" @click="onGetLocation">
+      <view class="fab pill" @click="onGetLocation">
         <image class="fab-icon fab-icon-location" src="/static/tabbar/位置.png" mode="aspectFit" />
+        <text class="fab-label">定位</text>
       </view>
-      <view class="fab" @click="openNearby">
+      <view class="fab pill" @click="openNearby">
         <image class="fab-icon" src="/static/tabbar/离我最近.png" mode="aspectFit" />
+        <text class="fab-label">离我最近</text>
       </view>
     </view>
 
@@ -917,9 +953,26 @@ onUnload(() => {
   padding: 0;
 }
 
+.fab.pill {
+  width: auto;
+  height: 88rpx;
+  min-width: 160rpx;
+  border-radius: 44rpx;
+  padding: 0 24rpx 0 16rpx;
+  gap: 10rpx;
+  flex-direction: row;
+}
+
+.fab-label {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #37291a;
+  line-height: 1;
+}
+
 .fab-icon {
-  width: 48rpx;
-  height: 48rpx;
+  width: 40rpx;
+  height: 40rpx;
 }
 
 .fab-icon-location {

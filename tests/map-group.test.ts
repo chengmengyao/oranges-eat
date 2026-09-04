@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { resolveMapGroup, isRecentPublicGroupAvailable } from '@/utils/map-group'
 import type { GroupView } from '@/types/group'
+import type { GroupViewState } from '@/stores/group'
 
 vi.mock('@/services/group', () => ({
   getPublicGroup: vi.fn(),
@@ -21,44 +22,58 @@ function group(id: string, publicId: string, name: string): GroupView {
   }
 }
 
+function member(groupId: string): GroupViewState {
+  return { kind: 'member', groupId }
+}
+
+function pub(publicId: string): GroupViewState {
+  return { kind: 'public', publicId }
+}
+
 describe('resolveMapGroup', () => {
   const ownGroup = group('group-own', 'public-own', '自己的清单')
   const sharedGroup = group('group-shared', 'public-shared', '受邀清单')
 
-  it('邀请指定的清单优先于账号原来的当前清单', () => {
+  it('成员视图命中当前成员清单', () => {
     expect(resolveMapGroup(
       [ownGroup, sharedGroup],
-      ownGroup.id,
-      sharedGroup.publicId,
+      member('group-shared'),
       null,
     )).toEqual({ group: sharedGroup, publicId: sharedGroup.publicId, isMember: true })
   })
 
-  it('非成员直接浏览邀请时仍使用邀请的公开清单', () => {
+  it('成员视图指向的清单已失效时回落到第一个成员清单', () => {
+    expect(resolveMapGroup(
+      [ownGroup, sharedGroup],
+      member('group-gone'),
+      null,
+    )).toEqual({ group: ownGroup, publicId: ownGroup.publicId, isMember: true })
+  })
+
+  it('公开视图且清单仍可访问时，不会被账号的成员清单顶回', () => {
     const selection = resolveMapGroup(
       [ownGroup],
-      ownGroup.id,
-      'public-shared',
-      { publicId: 'public-shared', name: '受邀清单' },
+      pub('public-visited'),
+      { publicId: 'public-visited', name: '最近访问的清单' },
     )
-    expect(selection.publicId).toBe('public-shared')
-    expect(selection.group?.name).toBe('受邀清单')
+    expect(selection.publicId).toBe('public-visited')
+    expect(selection.group?.name).toBe('最近访问的清单')
+    expect(selection.group?.id).toBe('')
     expect(selection.isMember).toBe(false)
   })
 
-  it('账号没有任何清单时不会沿用旧账号的当前清单', () => {
-    expect(resolveMapGroup([], ownGroup.id, '', null)).toEqual({
-      group: null,
-      publicId: '',
-      isMember: false,
-    })
+  it('公开视图已失效（记录不匹配）时回落成员清单', () => {
+    expect(resolveMapGroup(
+      [ownGroup],
+      pub('public-gone'),
+      null,
+    )).toEqual({ group: ownGroup, publicId: ownGroup.publicId, isMember: true })
   })
 
-  it('没有成员清单时降级为最近访问的公开清单', () => {
+  it('账号没有任何成员清单时降级为最近访问的公开清单', () => {
     const selection = resolveMapGroup(
       [],
-      ownGroup.id,
-      '',
+      member('group-own'),
       { publicId: 'public-visited', name: '最近访问的清单' },
     )
 
@@ -66,6 +81,14 @@ describe('resolveMapGroup', () => {
     expect(selection.group?.name).toBe('最近访问的清单')
     expect(selection.group?.id).toBe('')
     expect(selection.isMember).toBe(false)
+  })
+
+  it('无成员清单且无最近公开清单时返回空', () => {
+    expect(resolveMapGroup([], member(''), null)).toEqual({
+      group: null,
+      publicId: '',
+      isMember: false,
+    })
   })
 })
 

@@ -15,6 +15,11 @@ import { useGroupStore } from '@/stores/group'
 import { resolveMapGroup, isRecentPublicGroupAvailable } from '@/utils/map-group'
 import { CATEGORY_LABELS, PAGE_SIZE } from '@/constants/shop'
 import { validateShopForm, normalizeText } from '@/utils/shop-validation'
+import {
+  cityFolderLabel,
+  extractCityName,
+  matchCityFolder,
+} from '@/utils/city'
 import { hideLoading, showLoading } from '@/utils/global-loading'
 
 const store = useGroupStore()
@@ -73,6 +78,10 @@ const creatingFolder = ref(false)
 const folderFilter = ref('all')
 const cityTabLoading = ref(false)
 
+const locSeq = ref(0)
+const autoCitying = ref(false)
+const autoCityLabel = ref('')
+
 const anyOverlayOpen = computed(
   () =>
     showForm.value ||
@@ -87,6 +96,10 @@ watch(anyOverlayOpen, (open) => {
   } else {
     uni.showTabBar({ animation: false })
   }
+})
+
+watch(showForm, (open) => {
+  if (!open) cancelAutoCity()
 })
 
 const deletingId = ref('')
@@ -115,8 +128,7 @@ async function loadGroups() {
   if (seq !== groupsLoadSeq.value) return
   const selection = resolveMapGroup(
     groups,
-    store.state.currentGroupId,
-    '',
+    store.state.view,
     recentAvailable ? recent : null,
   )
   currentGroup.value = selection.group
@@ -281,7 +293,9 @@ function goManage() {
 
 async function refresh() {
   const first = !firstLoaded.value
-  if (first) showLoading()
+  const stale = store.consumeDataStale()
+  const withLoading = first || stale
+  if (withLoading) showLoading()
   try {
     await loadGroups()
     await resetAndLoad()
@@ -289,11 +303,12 @@ async function refresh() {
     errorMsg.value = err instanceof Error ? err.message : '加载失败'
     firstLoaded.value = true
   } finally {
-    if (first) hideLoading()
+    if (withLoading) hideLoading()
   }
 }
 
 function openCreate() {
+  cancelAutoCity()
   formMode.value = 'create'
   editingId.value = ''
   createRequestId.value = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -315,6 +330,7 @@ function openCreate() {
 }
 
 function openEdit(s: ShopView) {
+  cancelAutoCity()
   formMode.value = 'edit'
   editingId.value = s.id
   targetGroupId.value = groupId.value
@@ -334,6 +350,7 @@ function openEdit(s: ShopView) {
 
 function openFolderPicker() {
   if (creatingFolder.value) return
+  cancelAutoCity()
   newFolderName.value = ''
   showFolderPicker.value = true
 }
@@ -362,6 +379,7 @@ async function createNewFolder() {
     const folder = await createFolder(groupId.value, name)
     folders.value = [...folders.value, folder]
     store.setFolders(folders.value)
+    store.markDataChanged()
     form.value.folderId = folder.id
     showFolderPicker.value = false
     if (folderFilter.value === 'all' && folders.value.length > 0) {
@@ -384,6 +402,21 @@ const targetGroupName = computed(() => {
 })
 
 const selectedFolderName = ref('')
+
+const createCityText = computed(() => {
+  if (form.value.folderId) return store.folderName(form.value.folderId)
+  if (autoCitying.value && autoCityLabel.value) return `${autoCityLabel.value}…`
+  return '选择所属城市'
+})
+
+const createCityEmpty = computed(() => !form.value.folderId && !autoCitying.value)
+
+const editCityText = computed(() => {
+  if (autoCitying.value && autoCityLabel.value) return `${autoCityLabel.value}…`
+  return selectedFolderName.value || '选择城市'
+})
+
+const editCityEmpty = computed(() => !selectedFolderName.value && !autoCitying.value)
 
 const targetPublicId = computed(() => {
   if (targetGroupId.value) {
@@ -410,6 +443,7 @@ async function openGroupPicker() {
 }
 
 function openMoveTargetPicker() {
+  cancelAutoCity()
   showMoveTargetPicker.value = true
 }
 
@@ -428,23 +462,27 @@ async function onPickerSelect({
 }) {
   let switched = false
   if (pid !== publicId.value) {
-    const prevGroupId = store.state.currentGroupId
+    const prevView = { ...store.state.view }
     const prevRecent = store.getRecentPublicGroup()
     const g = store.state.groups.find((x) => x.publicId === pid)
     if (g) {
-      store.setCurrentGroup(g.id)
+      store.switchToGroup(g.id)
     } else {
       const opt = groupPickerOptions.value.find((o) => o.publicId === pid)
-      if (opt) store.setRecentPublicGroup({ publicId: pid, name: opt.name })
+      if (opt) store.switchToPublic(pid, opt.name)
     }
     folderFilter.value = 'all'
     try {
       await loadGroups()
     } catch {
-      // 拉取失败：回滚存储指向，避免页面与当前清单不一致导致写入错清单
-      store.setCurrentGroup(prevGroupId)
-      if (prevRecent) store.setRecentPublicGroup(prevRecent)
-      else store.clearRecentPublicGroup()
+      // 拉取失败：回滚视图指向与成员位，避免页面与当前清单不一致导致写入错清单
+      if (prevView.kind === 'member') {
+        store.setCurrentGroup(prevView.groupId)
+      } else {
+        store.setView(prevView)
+        if (prevRecent) store.setRecentPublicGroup(prevRecent)
+        else store.clearRecentPublicGroup()
+      }
       uni.showToast({ title: '切换失败，请重试', icon: 'none' })
       return
     }
@@ -477,18 +515,108 @@ function onMoveTargetSelect({
   selectedFolderName.value = folderName || ''
 }
 
+function currentOwnerGroupId(): string {
+  return formMode.value === 'edit' ? targetGroupId.value : groupId.value
+}
+
+function cancelAutoCity() {
+  locSeq.value += 1
+  autoCitying.value = false
+  autoCityLabel.value = ''
+}
+
+function assignCityFolder(folder: { id: string; name: string }, beforeId: string | null) {
+  form.value.folderId = folder.id
+  selectedFolderName.value = folder.name
+  if (folder.id !== beforeId) {
+    uni.showToast({ title: `已自动归入「${folder.name}」`, icon: 'none' })
+  }
+}
+
+async function candidateFoldersOf(ownerGroupId: string): Promise<FolderView[]> {
+  // 编辑并跨清单移动时，当前已加载的是原清单的城市，需要实时拉取目标清单的城市
+  if (formMode.value === 'edit' && ownerGroupId !== groupId.value) {
+    try {
+      const res = await listFolders(ownerGroupId)
+      return res.folders
+    } catch {
+      return []
+    }
+  }
+  return folders.value
+}
+
+/**
+ * 清单中不存在该城市（或需确认目标清单）时的兜底：自动新建并归档。
+ * 返回归档后显示名，失败返回 null（不阻塞录入，可手动选/新建）。
+ */
+async function applyCityAutoMatch(
+  cityFullName: string,
+  beforeId: string | null,
+): Promise<string | null> {
+  const ownerGroupId = currentOwnerGroupId()
+  if (!ownerGroupId) return null
+  const candidates = await candidateFoldersOf(ownerGroupId)
+  const matched = matchCityFolder(candidates, cityFullName)
+  if (matched) {
+    assignCityFolder(matched, beforeId)
+    return matched.name
+  }
+  if (!isMember.value) return null
+  try {
+    const created = await createFolder(ownerGroupId, cityFolderLabel(cityFullName))
+    if (ownerGroupId === groupId.value) {
+      folders.value = [...folders.value, created]
+      store.setFolders(folders.value)
+    }
+    assignCityFolder(created, beforeId)
+    return created.name
+  } catch {
+    return null
+  }
+}
+
 function chooseLocation() {
   uni.chooseLocation({
-    success: (res) => {
+    success: async (res) => {
       form.value.latitude = res.latitude
       form.value.longitude = res.longitude
       form.value.address = res.address || res.name || ''
       if (!form.value.name && res.name) {
         form.value.name = res.name
       }
+      const seq = ++locSeq.value
+      autoCitying.value = false
+      autoCityLabel.value = ''
+      const cityFullName = extractCityName(form.value.address)
+      if (!cityFullName) return
+      const beforeId = form.value.folderId
+      // 城市已在当前加载的清单城市列表里：本地直接归档，无需等待云函数
+      const ownerGroupId = currentOwnerGroupId()
+      if (formMode.value === 'create' || ownerGroupId === groupId.value) {
+        const hit = matchCityFolder(folders.value, cityFullName)
+        if (hit) {
+          assignCityFolder(hit, beforeId)
+          return
+        }
+      }
+      // 清单里还没有该城市：先用识别结果占位即时显示，再后台自动新建/确认后替换为真实城市
+      autoCityLabel.value = cityFolderLabel(cityFullName)
+      autoCitying.value = true
+      try {
+        await applyCityAutoMatch(cityFullName, beforeId)
+        if (seq !== locSeq.value) return
+        autoCitying.value = false
+        autoCityLabel.value = ''
+      } catch {
+        if (seq !== locSeq.value) return
+        autoCitying.value = false
+        autoCityLabel.value = ''
+      }
     },
     fail: () => {
-      // 取消选择不清空已有值
+      // 取消选择不清空已有值，并中止可能仍在进行的自动归档
+      cancelAutoCity()
     },
   })
 }
@@ -555,6 +683,7 @@ async function saveForm() {
     }
     showForm.value = false
     resetAndLoad()
+    store.markDataChanged()
   } catch (err) {
     formError.value = err instanceof Error ? err.message : '保存失败'
   } finally {
@@ -574,6 +703,7 @@ function confirmDelete(s: ShopView) {
       try {
         await deleteShop(groupId.value, s.id)
         shops.value = shops.value.filter((x) => x.id !== s.id)
+        store.markDataChanged()
         uni.showToast({ title: '已删除', icon: 'none' })
       } catch (err) {
         uni.showToast({ title: err instanceof Error ? err.message : '删除失败', icon: 'none' })
@@ -687,15 +817,15 @@ onReachBottom(() => {
         </view>
 
         <view v-if="formMode === 'create'" class="picker-row">
-          <view class="picker-value" :class="{ empty: !form.folderId }" @click="openFolderPicker">
-            {{ form.folderId ? store.folderName(form.folderId) : '选择所属城市' }}
+          <view class="picker-value" :class="{ empty: createCityEmpty }" @click="openFolderPicker">
+            {{ createCityText }}
           </view>
           <button class="btn-plain picker-btn" @click="openFolderPicker">选择</button>
         </view>
 
         <view v-else class="picker-row">
-          <view class="picker-value" :class="{ empty: !selectedFolderName }" @click="openMoveTargetPicker">
-            {{ targetGroupName || '当前清单' }} › {{ selectedFolderName || '选择城市' }}
+          <view class="picker-value" :class="{ empty: editCityEmpty }" @click="openMoveTargetPicker">
+            {{ targetGroupName || '当前清单' }} › {{ editCityText }}
           </view>
           <button class="btn-plain picker-btn" @click="openMoveTargetPicker">切换</button>
         </view>

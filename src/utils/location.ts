@@ -72,6 +72,11 @@ export function getCurrentLocation(): Promise<LocationResult> {
 }
 
 export function hasLocationPermission(): Promise<boolean> {
+  // H5 无小程序授权能力（getSetting 不存在，直接调用会抛 TypeError），
+  // 改用浏览器 Permissions API 探测地理位置授权状态
+  if (typeof uni.getSetting !== 'function') {
+    return queryH5LocationPermission()
+  }
   return new Promise((resolve) => {
     uni.getSetting({
       success: (res) => {
@@ -82,7 +87,26 @@ export function hasLocationPermission(): Promise<boolean> {
   })
 }
 
+function queryH5LocationPermission(): Promise<boolean> {
+  const nav = typeof navigator !== 'undefined'
+    ? (navigator as unknown as { permissions?: { query: (o: { name: string }) => Promise<{ state: string }> } })
+    : undefined
+  const queryFn = nav?.permissions?.query
+  if (typeof queryFn === 'function') {
+    return queryFn({ name: 'geolocation' })
+      .then((status) => status.state === 'granted')
+      .catch(() => false)
+  }
+  // 拿不到授权状态时默认允许发起定位：浏览器会在需要时弹出授权询问
+  return Promise.resolve(true)
+}
+
 export function openLocationSettings(): void {
+  // H5 没有独立的“去设置”授权入口，提示用户在浏览器侧处理
+  if (typeof uni.openSetting !== 'function') {
+    uni.showToast({ title: '请在浏览器设置中允许定位权限', icon: 'none' })
+    return
+  }
   uni.openSetting({
     success: (res) => {
       if (!res.authSetting['scope.userLocation']) {

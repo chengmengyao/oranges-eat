@@ -16,7 +16,7 @@
     {
       "path": "pages/food/food",
       "style": {
-        "navigationBarTitleText": "美食清单"
+        "navigationBarTitleText": "美食地图"
       }
     },
     {

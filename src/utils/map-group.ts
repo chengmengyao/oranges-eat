@@ -1,5 +1,5 @@
 import type { GroupView } from '@/types/group'
-import type { RecentPublicGroup } from '@/stores/group'
+import type { GroupViewState, RecentPublicGroup } from '@/stores/group'
 import { getPublicGroup } from '@/services/group'
 
 export interface MapGroupSelection {
@@ -19,26 +19,21 @@ function visitorGroup(recent: RecentPublicGroup): GroupView {
   }
 }
 
+// 依据全局唯一视图（view）解析当前应展示的清单。
+// - 视图为公开(访客)清单且仍可访问 → 优先展示公开清单，不被成员清单顶回；
+// - 视图为成员清单 / 公开清单已失效 → 走成员清单（当前成员位或第一个）；
+// - 没有任何成员清单 → 兜底最近访问的公开清单。
 export function resolveMapGroup(
   groups: GroupView[],
-  currentGroupId: string,
-  requestedPublicId: string,
+  view: GroupViewState,
   recent: RecentPublicGroup | null,
 ): MapGroupSelection {
-  if (requestedPublicId) {
-    const requestedMemberGroup = groups.find((group) => group.publicId === requestedPublicId)
-    if (requestedMemberGroup) {
-      return { group: requestedMemberGroup, publicId: requestedPublicId, isMember: true }
-    }
-    const requestedRecent = recent?.publicId === requestedPublicId ? recent : null
-    return {
-      group: requestedRecent ? visitorGroup(requestedRecent) : null,
-      publicId: requestedPublicId,
-      isMember: false,
-    }
+  if (view.kind === 'public' && recent && recent.publicId === view.publicId) {
+    return { group: visitorGroup(recent), publicId: recent.publicId, isMember: false }
   }
 
-  const current = groups.find((group) => group.id === currentGroupId) || groups[0]
+  const groupId = view.kind === 'member' ? view.groupId : ''
+  const current = groups.find((group) => group.id === groupId) || groups[0]
   if (current) {
     return { group: current, publicId: current.publicId, isMember: true }
   }

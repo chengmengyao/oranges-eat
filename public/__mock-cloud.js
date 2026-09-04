@@ -513,9 +513,24 @@
     }
   }
 
-  // 注入 window.wx（若微信已有则只补 cloud）
-  window.wx = window.wx || {}
-  window.wx.cloud = cloud
+  // 注入 window.wx.cloud；uni-h5 运行时会整体重写 window.wx，故用访问器在每次赋值后兜底补齐
+  var __mockWx = window.wx || {}
+  __mockWx.cloud = cloud
+  try {
+    Object.defineProperty(window, 'wx', {
+      configurable: true,
+      enumerable: true,
+      get: function () {
+        return __mockWx
+      },
+      set: function (v) {
+        __mockWx = v || {}
+        try {
+          if (v) v.cloud = cloud
+        } catch (e) {}
+      }
+    })
+  } catch (e) {}
   window.__mockCloudReady = true
   window.__mockReset = function () {
     localStorage.removeItem('__mock_db')

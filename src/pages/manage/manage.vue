@@ -20,6 +20,7 @@ import {
   assignUncategorizedShops,
 } from '@/services/group'
 import { useGroupStore } from '@/stores/group'
+import { resolveMapGroup } from '@/utils/map-group'
 import { getCloudInitState, downloadFile } from '@/utils/cloud'
 import { hideLoading, showLoading } from '@/utils/global-loading'
 
@@ -30,6 +31,9 @@ const groups = ref<GroupView[]>([])
 const currentGroupId = ref('')
 const members = ref<MemberView[]>([])
 const currentGroup = ref<GroupView | null>(null)
+// 全局当前清单是否落在公开(访客)清单上：此时 Home 展示只读浏览卡而非成员管理
+const viewingPublic = ref(false)
+const viewingPublicName = ref('')
 
 const createMode = ref(false)
 const groupName = ref('')
@@ -99,21 +103,26 @@ function loadGroups() {
     const previousGroupId = currentGroupId.value
     groups.value = list
     store.setGroups(list)
-    const cur = store.currentGroup()
-    if (cur) {
-      currentGroupId.value = cur.id
-      currentGroup.value = cur
-      if (previousGroupId !== cur.id) {
+    const selection = resolveMapGroup(groups.value, store.state.view, store.getRecentPublicGroup())
+    if (selection.isMember && selection.group) {
+      currentGroupId.value = selection.group.id
+      currentGroup.value = selection.group
+      viewingPublic.value = false
+      viewingPublicName.value = ''
+      if (previousGroupId !== currentGroupId.value) {
         members.value = []
         folders.value = []
         uncategorizedCount.value = 0
       }
     } else {
+      // 全局当前落在公开(访客)清单上：不做成员管理，展示只读浏览卡
       currentGroupId.value = ''
       currentGroup.value = null
       members.value = []
       folders.value = []
       uncategorizedCount.value = 0
+      viewingPublic.value = Boolean(selection.group)
+      viewingPublicName.value = selection.group?.name || ''
     }
   })
 }
@@ -182,6 +191,7 @@ function openCreateFolder() {
       try {
         await createFolder(currentGroupId.value, name)
         await loadFolders()
+        store.markDataChanged()
         uni.showToast({ title: '已创建', icon: 'success' })
       } catch (err) {
         uni.showToast({ title: err instanceof Error ? err.message : '创建失败', icon: 'none' })
@@ -211,6 +221,7 @@ function confirmEditFolder(f: FolderView) {
       try {
         await updateFolder(f.id, name)
         await loadFolders()
+        store.markDataChanged()
         uni.showToast({ title: '已修改', icon: 'success' })
       } catch (err) {
         uni.showToast({ title: err instanceof Error ? err.message : '修改失败', icon: 'none' })
@@ -224,7 +235,7 @@ function confirmEditFolder(f: FolderView) {
 function confirmDeleteFolder(f: FolderView) {
   uni.showModal({
     title: '删除城市',
-    content: `确认删除「${f.name}」？该城市下的店铺会保留并归为未分类。`,
+    content: `确认删除「${f.name}」？该城市下的地点会保留并归为未分类。`,
     confirmText: '删除',
     confirmColor: '#36393B',
     success: async (res) => {
@@ -233,6 +244,7 @@ function confirmDeleteFolder(f: FolderView) {
       try {
         await deleteFolder(f.id)
         await loadFolders()
+        store.markDataChanged()
         uni.showToast({ title: '已删除', icon: 'none' })
       } catch (err) {
         uni.showToast({ title: err instanceof Error ? err.message : '删除失败', icon: 'none' })
@@ -273,8 +285,9 @@ function openAssignUncategorized() {
       try {
         const result = await assignUncategorizedShops({ groupId, ...payload })
         await loadFolders()
+        store.markDataChanged()
         uni.showToast({
-          title: `已归类 ${result.updated} 家店`,
+          title: `已归类 ${result.updated} 个地点`,
           icon: 'none',
         })
       } catch (err) {
@@ -291,7 +304,9 @@ function openAssignUncategorized() {
 
 async function refresh() {
   const first = !initialLoaded.value
-  if (first) showLoading()
+  const stale = store.consumeDataStale()
+  const withLoading = first || stale
+  if (withLoading) showLoading()
   try {
     await loadGroups()
     await loadMembers()
@@ -300,7 +315,7 @@ async function refresh() {
   } catch (err) {
     uni.showToast({ title: err instanceof Error ? err.message : '加载失败', icon: 'none' })
   } finally {
-    if (first) hideLoading()
+    if (withLoading) hideLoading()
   }
 }
 
@@ -335,6 +350,7 @@ async function handleCreate() {
     }
     await loadMembers()
     await loadFolders()
+    store.markDataChanged()
     uni.showToast({ title: '创建成功', icon: 'success' })
   } catch (err) {
     uni.showToast({ title: err instanceof Error ? err.message : '创建失败', icon: 'none' })
@@ -389,11 +405,22 @@ function switchGroup(id: string) {
   store.clearFolders()
   currentGroupId.value = id
   currentGroup.value = store.currentGroup()
+  viewingPublic.value = false
+  viewingPublicName.value = ''
   members.value = []
   folders.value = []
   uncategorizedCount.value = 0
   loadMembers()
   loadFolders()
+}
+
+function switchToMyGroup() {
+  if (groups.value.length > 1) {
+    openGroupSwitcher()
+    return
+  }
+  const g = groups.value[0]
+  if (g) switchGroup(g.id)
 }
 
 async function loadInviteQrCode() {
@@ -422,7 +449,7 @@ async function handleGenerateInvite() {
     inviteRemaining.value = res.remainingUses
     showingInvite.value = true
     shareMessage.value = {
-      title: `加入「${currentGroup.value?.name || '美食清单'}」一起添加好吃的`,
+      title: `加入「${currentGroup.value?.name || '美食地图'}」一起添加好吃的`,
       path: `/pages/invite/index?publicId=${currentGroup.value?.publicId}&token=${encodeURIComponent(res.token)}`,
     }
     loadInviteQrCode()
@@ -493,7 +520,7 @@ async function handleRevokeInvite() {
 function confirmRemove(m: MemberView) {
   uni.showModal({
     title: '移除成员',
-    content: `确认移除「${m.displayName}」？其添加的店铺会保留。`,
+    content: `确认移除「${m.displayName}」？其添加的地点会保留。`,
     confirmText: '移除',
     confirmColor: '#36393B',
     success: async (res) => {
@@ -533,6 +560,7 @@ function confirmEditGroup(g: GroupView) {
       try {
         await updateGroupName(g.id, name)
         await loadGroups()
+        store.markDataChanged()
         uni.showToast({ title: '已修改', icon: 'success' })
       } catch (err) {
         uni.showToast({ title: err instanceof Error ? err.message : '修改失败', icon: 'none' })
@@ -544,7 +572,7 @@ function confirmEditGroup(g: GroupView) {
 function confirmDeleteGroup(g: GroupView) {
   uni.showModal({
     title: '删除清单',
-    content: `确认删除「${g.name}」？将同时删除所有成员、邀请和店铺记录，且不可恢复。`,
+    content: `确认删除「${g.name}」？将同时删除所有成员、邀请和地点记录，且不可恢复。`,
     confirmText: '删除',
     confirmColor: '#36393B',
     success: async (res) => {
@@ -565,6 +593,7 @@ function confirmDeleteGroup(g: GroupView) {
           recentPublicGroup.value = null
         }
         await refresh()
+        store.markDataChanged()
         if (groups.value.length === 0) {
           openCreateMode()
         }
@@ -578,9 +607,13 @@ function confirmDeleteGroup(g: GroupView) {
   })
 }
 
+function openMap() {
+  uni.switchTab({ url: '/pages/index/index' })
+}
+
 function viewPublicMap() {
   if (!recentPublicGroup.value) return
-  uni.switchTab({ url: '/pages/index/index' })
+  openMap()
 }
 
 onShow(() => {
@@ -598,19 +631,6 @@ onShow(() => {
       <text class="muted">{{ state.message }}</text>
     </view>
 
-    <view v-else-if="groups.length === 0 && !createMode && !recentPublicGroup" class="card empty-card">
-      <text class="empty-title">创建你的第一份共享清单</text>
-      <text class="muted">邀请朋友一起添加想吃的店</text>
-      <button class="btn-primary" @click="openCreateMode">开始创建</button>
-    </view>
-
-    <view v-else-if="groups.length === 0 && !createMode && recentPublicGroup" class="card empty-card">
-      <text class="empty-title">{{ recentPublicGroup.name }}</text>
-      <text class="muted">当前为只读访客 · 加入清单后可添加店铺或景点</text>
-      <button class="btn-primary" @click="viewPublicMap">查看公开地图</button>
-      <button class="btn-plain" @click="openCreateMode">创建自己的清单</button>
-    </view>
-
     <view v-else-if="createMode" class="card create-card">
       <text class="section-title">创建共享清单</text>
       <input v-model="groupName" class="input" placeholder="清单名称（1-30 字）" maxlength="30" />
@@ -624,7 +644,20 @@ onShow(() => {
       </view>
     </view>
 
-    <template v-else>
+    <view v-else-if="groups.length === 0 && !recentPublicGroup" class="card empty-card">
+      <text class="empty-title">创建你的第一份共享清单</text>
+      <text class="muted">邀请朋友一起添加想吃的店</text>
+      <button class="btn-primary" @click="openCreateMode">开始创建</button>
+    </view>
+
+    <view v-else-if="groups.length === 0 && recentPublicGroup" class="card empty-card">
+      <text class="empty-title">{{ recentPublicGroup.name }}</text>
+      <text class="muted">当前为只读访客 · 加入清单后可添加店铺或景点</text>
+      <button class="btn-primary" @click="viewPublicMap">查看公开地图</button>
+      <button class="btn-plain" @click="openCreateMode">创建自己的清单</button>
+    </view>
+
+    <template v-else-if="!viewingPublic">
       <!-- 当前清单 Hero -->
       <view class="hero-section">
         <view class="hero-card">
@@ -646,7 +679,7 @@ onShow(() => {
             </view>
             <view class="stat-item">
               <text class="stat-value">{{ totalShops }}</text>
-              <text class="stat-label">店铺</text>
+              <text class="stat-label">地点</text>
             </view>
             <view class="stat-item">
               <text class="stat-value">{{ members.length }}</text>
@@ -672,7 +705,7 @@ onShow(() => {
         <view v-for="f in folders" :key="f.id" class="city-row">
           <view class="city-info">
             <text class="city-name">{{ f.name }}</text>
-            <text class="city-count">{{ f.shopCount ?? 0 }} 家店</text>
+            <text class="city-count">{{ f.shopCount ?? 0 }} 个地点</text>
           </view>
           <view class="city-actions">
             <button class="mini-btn edit" :disabled="renamingFolder" @click="confirmEditFolder(f)">改名</button>
@@ -683,7 +716,7 @@ onShow(() => {
         <view v-if="uncategorizedCount > 0" class="city-row">
           <view class="city-info">
             <text class="city-name muted-name">未分类</text>
-            <text class="city-count">{{ uncategorizedCount }} 家店</text>
+            <text class="city-count">{{ uncategorizedCount }} 个地点</text>
           </view>
           <view class="city-actions">
             <button class="mini-btn edit" :disabled="assigningUncategorized" @click="openAssignUncategorized">
@@ -791,6 +824,22 @@ onShow(() => {
 
       <view class="cta-space"></view>
     </template>
+
+    <!-- 全局当前清单为公开(访客)清单时的只读浏览卡 -->
+    <view v-else class="card browse-card">
+      <view class="browse-head">
+        <view class="browse-icon"><text>👀</text></view>
+        <view class="browse-info">
+          <text class="browse-label">当前浏览</text>
+          <text class="browse-name">{{ viewingPublicName || recentPublicGroup?.name || '公开清单' }}</text>
+        </view>
+      </view>
+      <text class="muted">这是一份朋友分享的公开清单，当前为只读访客浏览。切换到自己的清单后可管理成员和城市。</text>
+      <view class="row-gap">
+        <button class="btn-secondary" @click="openMap">查看公开地图</button>
+        <button class="btn-primary" @click="switchToMyGroup">切换到我的清单</button>
+      </view>
+    </view>
 
     <!-- 底部创建新清单 -->
     <view v-if="!createMode && groups.length > 0 && !cloudMissing" class="bottom-cta">
@@ -1412,5 +1461,50 @@ onShow(() => {
   &::after {
     border: none;
   }
+}
+
+/* ===== 公开(访客)清单只读浏览卡 ===== */
+.browse-card {
+  margin-top: 48rpx;
+}
+
+.browse-head {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+
+.browse-icon {
+  flex: none;
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 50%;
+  background: #f5f3ef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44rpx;
+}
+
+.browse-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.browse-label {
+  font-size: 24rpx;
+  color: #8E8E93;
+}
+
+.browse-name {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #1C1C1E;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 </style>

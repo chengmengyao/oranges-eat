@@ -270,7 +270,7 @@ function pickColumnGroup(publicId: string) {
                       v-else-if="(folderDataOf(opt.publicId)?.uncategorizedCount ?? 0) > 0"
                       class="gcp-count"
                     >
-                      {{ folderDataOf(opt.publicId)?.uncategorizedCount }} 家店
+                      {{ folderDataOf(opt.publicId)?.uncategorizedCount }} 个地点
                     </text>
                   </view>
                 </view>
@@ -290,7 +290,7 @@ function pickColumnGroup(publicId: string) {
                       <text>✓</text>
                     </view>
                     <text v-else-if="f.shopCount !== undefined" class="gcp-count">
-                      {{ f.shopCount }} 家店
+                      {{ f.shopCount }} 个地点
                     </text>
                   </view>
                 </view>
