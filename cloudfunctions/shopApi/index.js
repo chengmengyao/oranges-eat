@@ -134,6 +134,20 @@ function randomToken() {
   return crypto.randomBytes(32).toString('hex')
 }
 
+function cityShareGroupId(shareId, recipientOpenId) {
+  return crypto.createHash('sha256').update(`cityshare-group:${shareId}:${recipientOpenId}`).digest('hex').slice(0, 32)
+}
+
+async function rollbackCityShareGroup(groupId) {
+  await Promise.all([
+    db.collection(FOLDERS).where({ groupId }).remove(),
+    db.collection(MEMBERS).where({ groupId }).remove(),
+    db.collection(SHOPS).where({ groupId }).remove(),
+    db.collection(CITY_SHARE_ACCEPTS).where({ groupId }).remove(),
+    db.collection(GROUPS).doc(groupId).remove(),
+  ])
+}
+
 function cityShopPublicView(shop) {
   return {
     id: shop._id,
@@ -180,13 +194,20 @@ async function mapWithConcurrency(items, limit, mapper) {
   return results
 }
 
+async function fetchAllDocs(collection, where, max = 1000) {
+  // 云数据库单次最多返回 100 条，分页拉全，避免成员过多时静默丢组。
+  const pageSize = 100
+  const all = []
+  for (let offset = 0; offset < max; offset += pageSize) {
+    const res = await db.collection(collection).where(where).skip(offset).limit(pageSize).get()
+    all.push(...res.data)
+    if (res.data.length < pageSize) break
+  }
+  return all
+}
+
 async function loadMyCityContext(openId) {
-  const memberRes = await db
-    .collection(MEMBERS)
-    .where({ userOpenId: openId, status: 'active' })
-    .limit(100)
-    .get()
-  const members = memberRes.data
+  const members = await fetchAllDocs(MEMBERS, { userOpenId: openId, status: 'active' }, 1000)
   if (members.length === 0) {
     return { groups: [], membersByGroup: new Map(), foldersById: new Map(), shops: [] }
   }
@@ -464,18 +485,30 @@ async function acceptCityShare(event, openId) {
   const share = await findCityShare(token, code)
   if (!share || Number(share.expiresAt) < Date.now()) return fail('分享链接已失效', 'SHARE_INVALID')
 
-  const existingAccept = await db.collection(CITY_SHARE_ACCEPTS)
+  // 兼容旧版按随机 _id 建组的历史领取记录，避免重复建清单。
+  const legacyAccept = await db.collection(CITY_SHARE_ACCEPTS)
     .where({ shareId: share._id, recipientOpenId: openId, status: 'active' })
     .limit(1)
     .get()
-  if (existingAccept.data[0]) {
-    const existingGroup = await findGroupById(existingAccept.data[0].groupId)
-    if (existingGroup) return ok({ groupId: existingGroup._id, publicId: existingGroup.publicId, name: existingGroup.name, duplicated: true })
+  if (legacyAccept.data[0]) {
+    const legacyGroup = await findGroupById(legacyAccept.data[0].groupId)
+    if (legacyGroup) {
+      return ok({ groupId: legacyGroup._id, publicId: legacyGroup.publicId, name: legacyGroup.name, duplicated: true })
+    }
+  }
+
+  // 用确定性 groupId 保证「同一分享 + 同一领取人」只会创建一个清单；并发时
+  // 另一请求会在 add 因 _id 冲突失败，随后按已领取返回，避免重复建清单。
+  const groupId = cityShareGroupId(share._id, openId)
+  const existingGroup = await findGroupById(groupId)
+  if (existingGroup) {
+    return ok({ groupId, publicId: existingGroup.publicId, name: existingGroup.name, duplicated: true })
   }
 
   const now = Date.now()
   const groupName = `${share.cityName}共享清单`.slice(0, 30)
   const groupDoc = {
+    _id: groupId,
     publicId: randomToken().slice(0, 32),
     name: groupName,
     ownerOpenId: share.ownerOpenId,
@@ -484,73 +517,84 @@ async function acceptCityShare(event, openId) {
     createdAt: now,
     updatedAt: now,
   }
-  const groupRes = await db.collection(GROUPS).add({ data: groupDoc })
-  const groupId = groupRes._id
-  const folderRes = await db.collection(FOLDERS).add({
-    data: {
-      groupId,
-      name: share.cityName,
-      cityCode: share.cityCode,
-      cityName: share.cityName,
-      sortOrder: 0,
-      createdByOpenId: share.ownerOpenId,
-      createdAt: now,
-      updatedAt: now,
-    },
-  })
-  const memberDocs = [
-    {
-      _id: memberId(groupId, share.ownerOpenId),
-      groupId,
-      userOpenId: share.ownerOpenId,
-      displayName: '分享者',
-      role: 'owner',
-      allowDelete: true,
-      status: 'active',
-      joinedAt: now,
-      updatedAt: now,
-    },
-  ]
-  // 分享者本人扫码时 openId 与 owner 相同，memberId 会重复导致 add 失败并留下孤儿清单，需去重。
-  if (openId !== share.ownerOpenId) {
-    memberDocs.push({
-      _id: memberId(groupId, openId),
-      groupId,
-      userOpenId: openId,
-      displayName,
-      role: 'member',
-      allowDelete: false,
-      status: 'active',
-      joinedAt: now,
-      updatedAt: now,
-    })
+  try {
+    await db.collection(GROUPS).add({ data: groupDoc })
+  } catch (err) {
+    const raced = await findGroupById(groupId)
+    if (raced) return ok({ groupId, publicId: raced.publicId, name: raced.name, duplicated: true })
+    throw err
   }
-  await Promise.all(memberDocs.map((data) => db.collection(MEMBERS).add({ data })))
+  try {
+    const folderRes = await db.collection(FOLDERS).add({
+      data: {
+        groupId,
+        name: share.cityName,
+        cityCode: share.cityCode,
+        cityName: share.cityName,
+        sortOrder: 0,
+        createdByOpenId: share.ownerOpenId,
+        createdAt: now,
+        updatedAt: now,
+      },
+    })
+    const memberDocs = [
+      {
+        _id: memberId(groupId, share.ownerOpenId),
+        groupId,
+        userOpenId: share.ownerOpenId,
+        displayName: '分享者',
+        role: 'owner',
+        allowDelete: true,
+        status: 'active',
+        joinedAt: now,
+        updatedAt: now,
+      },
+    ]
+    // 分享者本人扫码时 openId 与 owner 相同，memberId 会重复导致 add 失败并留下孤儿清单，需去重。
+    if (openId !== share.ownerOpenId) {
+      memberDocs.push({
+        _id: memberId(groupId, openId),
+        groupId,
+        userOpenId: openId,
+        displayName,
+        role: 'member',
+        allowDelete: false,
+        status: 'active',
+        joinedAt: now,
+        updatedAt: now,
+      })
+    }
+    await Promise.all(memberDocs.map((data) => db.collection(MEMBERS).add({ data })))
 
-  const sourceShops = await collectShareableCityShopRecords(share.ownerOpenId, share.cityCode)
-  await Promise.all(sourceShops.map((shop) => db.collection(SHOPS).add({
-    data: {
-      groupId,
-      folderId: folderRes._id,
-      cityCode: share.cityCode,
-      cityName: share.cityName,
-      requestId: null,
-      name: shop.name,
-      category: shop.category,
-      latitude: shop.latitude,
-      longitude: shop.longitude,
-      address: shop.address,
-      remark: shop.remark || '',
-      createdByOpenId: share.ownerOpenId,
-      createdByName: '分享者',
-      updatedByOpenId: share.ownerOpenId,
-      createdAt: shop.createdAt || now,
-      updatedAt: shop.updatedAt || now,
-    },
-  })))
-  await db.collection(CITY_SHARE_ACCEPTS).add({
-    data: { shareId: share._id, groupId, recipientOpenId: openId, status: 'active', createdAt: now },
-  })
+    const sourceShops = await collectShareableCityShopRecords(share.ownerOpenId, share.cityCode)
+    await Promise.all(sourceShops.map((shop) => db.collection(SHOPS).add({
+      data: {
+        groupId,
+        folderId: folderRes._id,
+        cityCode: share.cityCode,
+        cityName: share.cityName,
+        requestId: null,
+        name: shop.name,
+        category: shop.category,
+        latitude: shop.latitude,
+        longitude: shop.longitude,
+        address: shop.address,
+        remark: shop.remark || '',
+        createdByOpenId: share.ownerOpenId,
+        createdByName: '分享者',
+        updatedByOpenId: share.ownerOpenId,
+        createdAt: shop.createdAt || now,
+        updatedAt: shop.updatedAt || now,
+      },
+    })))
+    await db.collection(CITY_SHARE_ACCEPTS).add({
+      data: { shareId: share._id, groupId, recipientOpenId: openId, status: 'active', createdAt: now },
+    })
+  } catch (err) {
+    // 未能完整建好清单时回滚，避免重试因确定性 groupId 已存在而返回残缺清单。
+    await rollbackCityShareGroup(groupId).catch(() => {})
+    throw err
+  }
   return ok({ groupId, publicId: groupDoc.publicId, name: groupName, duplicated: false })
 }
 

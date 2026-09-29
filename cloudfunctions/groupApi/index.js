@@ -2,7 +2,7 @@ const cloud = require('wx-server-sdk')
 const crypto = require('crypto')
 const { evaluateInvite } = require('./invite')
 const { ensurePersistentShortCode } = require('./invite-code')
-const { cityCodeFromName } = require('./city')
+const { cityCodeFromName, cityDisplayName } = require('./city')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -150,7 +150,7 @@ function toFolderView(folder) {
     id: folder._id,
     name: folder.name,
     cityCode,
-    cityName: folder.cityName || folder.name,
+    cityName: cityDisplayName(folder.cityName || folder.name),
     sortOrder: folder.sortOrder,
   }
 }
@@ -747,7 +747,7 @@ async function createFolder(event, openId) {
     groupId,
     name,
     cityCode: cityCodeFromName(name),
-    cityName: name,
+    cityName: cityDisplayName(name),
     sortOrder: Number(countRes.total) || 0,
     createdByOpenId: openId,
     createdAt: now,
@@ -772,7 +772,7 @@ async function updateFolder(event, openId) {
   if (name) {
     data.name = name
     data.cityCode = cityCodeFromName(name)
-    data.cityName = name
+    data.cityName = cityDisplayName(name)
   }
   if (Number.isFinite(sortOrder)) data.sortOrder = sortOrder
   await db.collection(FOLDERS).doc(folderId).update({ data })
@@ -781,7 +781,7 @@ async function updateFolder(event, openId) {
     // 单清单店铺数上限 1000，单次 where().update() 即可覆盖全部匹配记录。
     await db.collection(SHOPS)
       .where({ groupId: folder.groupId, folderId })
-      .update({ data: { cityCode: data.cityCode, cityName: name, updatedAt: data.updatedAt } })
+      .update({ data: { cityCode: data.cityCode, cityName: data.cityName, updatedAt: data.updatedAt } })
   }
   return ok({ updatedAt: data.updatedAt })
 }
@@ -831,7 +831,7 @@ async function assignUncategorizedShops(event, openId) {
           groupId,
           name: folderName,
           cityCode: cityCodeFromName(folderName),
-          cityName: folderName,
+          cityName: cityDisplayName(folderName),
           sortOrder,
           createdByOpenId: openId,
           createdAt: now,
@@ -864,7 +864,7 @@ async function assignUncategorizedShops(event, openId) {
           data: {
             folderId,
             cityCode: folder.cityCode || cityCodeFromName(folder.cityName || folder.name),
-            cityName: folder.cityName || folder.name,
+            cityName: cityDisplayName(folder.cityName || folder.name),
             updatedAt: now,
           },
         }),
@@ -920,7 +920,7 @@ async function mergeGroups(event, openId) {
         groupId: targetGroupId,
         name: sourceGroup.name,
         cityCode: cityCodeFromName(sourceGroup.name),
-        cityName: sourceGroup.name,
+        cityName: cityDisplayName(sourceGroup.name),
         sortOrder,
         createdByOpenId: openId,
         createdAt: now,
@@ -941,7 +941,7 @@ async function mergeGroups(event, openId) {
             groupId: targetGroupId,
             folderId,
             cityCode: cityCodeFromName(sourceGroup.name),
-            cityName: sourceGroup.name,
+            cityName: cityDisplayName(sourceGroup.name),
             updatedAt: now,
           },
         })

@@ -12,4 +12,12 @@ function cityCodeFromName(value) {
   return normalized.length >= 2 ? normalized : ''
 }
 
-module.exports = { cityCodeFromName }
+function cityDisplayName(value) {
+  const raw = typeof value === 'string' ? value.replace(/\s+/g, '').trim() : ''
+  const main = raw.split(BRACKET_SPLIT_RE)[0]
+  if (main.startsWith('香港特别行政区')) return '香港'
+  if (main.startsWith('澳门特别行政区')) return '澳门'
+  return main.replace(/(?:市|地区|盟)$/, '')
+}
+
+module.exports = { normalizeCityName, cityCodeFromName, cityDisplayName }

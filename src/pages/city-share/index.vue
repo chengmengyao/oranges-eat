@@ -11,7 +11,9 @@ const loading = ref(true)
 const errorMsg = ref('')
 
 function sharePath() {
-  return `/pages/city-share/index?token=${encodeURIComponent(token.value)}`
+  if (token.value) return `/pages/city-share/index?token=${encodeURIComponent(token.value)}`
+  if (code.value) return `/pages/city-share/index?code=${encodeURIComponent(code.value)}`
+  return '/pages/city-share/index'
 }
 
 async function load() {
@@ -40,6 +42,9 @@ function openSearch() {
 
 onLoad((query) => {
   token.value = typeof query?.token === 'string' ? decodeURIComponent(query.token) : ''
+  if (!token.value && typeof query?.code === 'string') {
+    code.value = decodeURIComponent(query.code)
+  }
   const scene = typeof query?.scene === 'string' ? decodeURIComponent(query.scene) : ''
   for (const part of scene.split('&')) {
     const separator = part.indexOf('=')

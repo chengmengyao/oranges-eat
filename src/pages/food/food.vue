@@ -95,9 +95,6 @@ const groupsLoading = ref(false)
 
 const folders = ref<FolderView[]>([])
 const uncategorizedCount = ref(0)
-const showFolderPicker = ref(false)
-const newFolderName = ref('')
-const creatingFolder = ref(false)
 const folderFilter = ref('all')
 const cityTabLoading = ref(false)
 
@@ -108,7 +105,6 @@ const autoCityLabel = ref('')
 const anyOverlayOpen = computed(
   () =>
     showForm.value ||
-    showFolderPicker.value ||
     showGroupPicker.value ||
     showMoveTargetPicker.value,
 )
@@ -430,51 +426,6 @@ async function shareCurrentCity() {
   }
 }
 
-function openFolderPicker() {
-  if (creatingFolder.value) return
-  cancelAutoCity()
-  newFolderName.value = ''
-  showFolderPicker.value = true
-}
-
-function selectFolder(value: string | null) {
-  form.value.folderId = value
-  showFolderPicker.value = false
-}
-
-async function createNewFolder() {
-  const name = newFolderName.value.trim()
-  if (!name) {
-    uni.showToast({ title: '请输入城市名', icon: 'none' })
-    return
-  }
-  if (name.length > 30) {
-    uni.showToast({ title: '城市名不能超过 30 字', icon: 'none' })
-    return
-  }
-  creatingFolder.value = true
-  try {
-    if (!isMember.value || !groupId.value) {
-      uni.showToast({ title: '加入清单后才能创建城市', icon: 'none' })
-      return
-    }
-    const folder = await createFolder(groupId.value, name)
-    folders.value = [...folders.value, folder]
-    store.setFolders(folders.value)
-    store.markDataChanged()
-    form.value.folderId = folder.id
-    showFolderPicker.value = false
-    if (folderFilter.value === 'all' && folders.value.length > 0) {
-      // 新建城市后保持在全部视图，便于查看新城市店铺
-    }
-    uni.showToast({ title: '已创建', icon: 'success' })
-  } catch (err) {
-    uni.showToast({ title: err instanceof Error ? err.message : '创建失败', icon: 'none' })
-  } finally {
-    creatingFolder.value = false
-  }
-}
-
 const targetGroupName = computed(() => {
   if (!targetGroupId.value) return ''
   const g = store.state.groups.find((x) => x.id === targetGroupId.value)
@@ -683,6 +634,8 @@ function chooseLocation() {
       autoCityLabel.value = ''
       const cityFullName = extractCityName(form.value.address)
       if (!cityFullName) return
+      // 城市视图下店铺保存为不归属清单的城市店铺，不在清单里归档或新建城市子清单。
+      if (foodScope.value.kind === 'city') return
       const beforeId = form.value.folderId
       // 城市已在当前加载的清单城市列表里：本地直接归档，无需等待云函数
       const ownerGroupId = currentOwnerGroupId()
@@ -856,16 +809,13 @@ const loadStatusText = computed(() => {
 onShow(() => {
   void refresh().then(() => {
     const pending = takeQueuedCityAdd()
-    if (!pending || !isMember.value) return
+    if (!pending) return
+    // 地图城市视图点「添加」会带上城市入队：切到城市 scope，保存为不归属清单的城市店铺，
+    // 与美食页城市视图的新增语义保持一致（成员与访客都可以添加自己的城市店铺）。
+    foodScope.value = { kind: 'city', cityCode: pending.cityCode, cityName: pending.cityName }
+    folderFilter.value = 'all'
+    resetAndLoad()
     openCreate()
-    const matched = matchCityFolder(folders.value, pending.cityCode || pending.cityName)
-    if (matched) {
-      form.value.folderId = matched.id
-      selectedFolderName.value = matched.name
-    } else {
-      uni.showToast({ title: `请选择保存到哪个清单的「${pending.cityName}」城市`, icon: 'none' })
-      openMoveTargetPicker()
-    }
   })
 })
 
@@ -1047,40 +997,6 @@ onReachBottom(() => {
         <view class="city-share-qr-wrap">
           <image v-if="cityShareQrFileId" :src="cityShareQrFileId" class="city-share-qr" mode="aspectFit" />
           <text v-else class="city-share-error">{{ cityShareError || '二维码生成中…' }}</text>
-        </view>
-      </view>
-    </wd-popup>
-
-    <wd-popup v-model="showFolderPicker" position="bottom" :z-index="1000" custom-style="padding: 24rpx 32rpx 24rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx;">
-      <view class="group-picker-body">
-        <view class="group-picker-head">
-          <text class="group-picker-title">选择所属城市</text>
-          <text class="sheet-close" @click="showFolderPicker = false">✕</text>
-        </view>
-        <view
-          v-if="isMember"
-          class="group-picker-item"
-          :class="{ active: form.folderId === null }"
-          @click="selectFolder(null)"
-        >
-          <text class="group-picker-name">未分类</text>
-          <text v-if="form.folderId === null" class="group-picker-check">✓</text>
-        </view>
-        <view
-          v-for="f in folders"
-          :key="f.id"
-          class="group-picker-item"
-          :class="{ active: form.folderId === f.id }"
-          @click="selectFolder(f.id)"
-        >
-          <text class="group-picker-name">{{ f.name }}</text>
-          <text v-if="form.folderId === f.id" class="group-picker-check">✓</text>
-        </view>
-        <view v-if="isMember" class="new-folder-row">
-          <input v-model="newFolderName" class="new-folder-input" placeholder="新城市名（如：成都）" maxlength="30" />
-          <button class="btn-plain new-folder-btn" :loading="creatingFolder" :disabled="creatingFolder" @click="createNewFolder">
-            新建
-          </button>
         </view>
       </view>
     </wd-popup>
