@@ -2,6 +2,7 @@ const cloud = require('wx-server-sdk')
 const crypto = require('crypto')
 const { evaluateInvite } = require('./invite')
 const { ensurePersistentShortCode } = require('./invite-code')
+const { cityCodeFromName } = require('./city')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -144,9 +145,12 @@ function toMemberView(member, selfOpenId) {
 }
 
 function toFolderView(folder) {
+  const cityCode = folder.cityCode || cityCodeFromName(folder.cityName || folder.name)
   return {
     id: folder._id,
     name: folder.name,
+    cityCode,
+    cityName: folder.cityName || folder.name,
     sortOrder: folder.sortOrder,
   }
 }
@@ -742,6 +746,8 @@ async function createFolder(event, openId) {
   const folderDoc = {
     groupId,
     name,
+    cityCode: cityCodeFromName(name),
+    cityName: name,
     sortOrder: Number(countRes.total) || 0,
     createdByOpenId: openId,
     createdAt: now,
@@ -763,9 +769,20 @@ async function updateFolder(event, openId) {
   if (!member) return fail('请先加入清单', 'FORBIDDEN')
 
   const data = { updatedAt: Date.now() }
-  if (name) data.name = name
+  if (name) {
+    data.name = name
+    data.cityCode = cityCodeFromName(name)
+    data.cityName = name
+  }
   if (Number.isFinite(sortOrder)) data.sortOrder = sortOrder
   await db.collection(FOLDERS).doc(folderId).update({ data })
+  if (name) {
+    // 级联更新不改变 where 谓词，不能复用 updateAllWhere（每轮 updated 恒为上限会死循环）。
+    // 单清单店铺数上限 1000，单次 where().update() 即可覆盖全部匹配记录。
+    await db.collection(SHOPS)
+      .where({ groupId: folder.groupId, folderId })
+      .update({ data: { cityCode: data.cityCode, cityName: name, updatedAt: data.updatedAt } })
+  }
   return ok({ updatedAt: data.updatedAt })
 }
 
@@ -780,7 +797,11 @@ async function deleteFolder(event, openId) {
 
   // 该城市下的店铺归为未分类，不删除店铺
   const now = Date.now()
-  await updateAllWhere(SHOPS, { groupId: folder.groupId, folderId }, { folderId: null, updatedAt: now })
+  await updateAllWhere(
+    SHOPS,
+    { groupId: folder.groupId, folderId },
+    { folderId: null, cityCode: null, cityName: null, updatedAt: now },
+  )
   await db.collection(FOLDERS).doc(folderId).remove()
   return ok({ deleted: true })
 }
@@ -809,6 +830,8 @@ async function assignUncategorizedShops(event, openId) {
         data: {
           groupId,
           name: folderName,
+          cityCode: cityCodeFromName(folderName),
+          cityName: folderName,
           sortOrder,
           createdByOpenId: openId,
           createdAt: now,
@@ -838,7 +861,12 @@ async function assignUncategorizedShops(event, openId) {
     await Promise.all(
       targets.map((s) =>
         db.collection(SHOPS).doc(s._id).update({
-          data: { folderId, updatedAt: now },
+          data: {
+            folderId,
+            cityCode: folder.cityCode || cityCodeFromName(folder.cityName || folder.name),
+            cityName: folder.cityName || folder.name,
+            updatedAt: now,
+          },
         }),
       ),
     )
@@ -891,6 +919,8 @@ async function mergeGroups(event, openId) {
       data: {
         groupId: targetGroupId,
         name: sourceGroup.name,
+        cityCode: cityCodeFromName(sourceGroup.name),
+        cityName: sourceGroup.name,
         sortOrder,
         createdByOpenId: openId,
         createdAt: now,
@@ -906,7 +936,15 @@ async function mergeGroups(event, openId) {
       const res = await db
         .collection(SHOPS)
         .where({ groupId: sid })
-        .update({ data: { groupId: targetGroupId, folderId, updatedAt: now } })
+        .update({
+          data: {
+            groupId: targetGroupId,
+            folderId,
+            cityCode: cityCodeFromName(sourceGroup.name),
+            cityName: sourceGroup.name,
+            updatedAt: now,
+          },
+        })
       const n = Number(res && res.stats && res.stats.updated) || 0
       mergedShops += n
       if (n < MAX_BATCH_WRITE) break

@@ -30,6 +30,12 @@
       "style": {
         "navigationBarTitleText": "邀请加入"
       }
+    },
+    {
+      "path": "pages/city-share/index",
+      "style": {
+        "navigationBarTitleText": "城市店铺"
+      }
     }
   ],
   "globalStyle": {

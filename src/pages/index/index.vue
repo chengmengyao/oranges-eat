@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
-import type { PublicShopView, ShopView } from '@/types/shop'
+import type { CityShopView, CitySummary, PublicShopView, ShopView } from '@/types/shop'
 import type { FolderView, GroupView } from '@/types/group'
-import { listMemberMapShops, listPublicMapShops } from '@/services/shop'
+import {
+  listMemberMapShops,
+  listMyCities,
+  listMyCityMapShops,
+  listPublicMapShops,
+} from '@/services/shop'
 import { getPublicGroup, listMyGroups, listPublicFolders } from '@/services/group'
 import { useGroupStore } from '@/stores/group'
 import { CATEGORY_LABELS, SHOP_CATEGORIES } from '@/constants/shop'
@@ -18,6 +23,7 @@ import { formatDistance, haversineDistance, sortByDistance } from '@/utils/geo'
 import { resolveMapGroup, isRecentPublicGroupAvailable } from '@/utils/map-group'
 import { hideLoading, showLoading } from '@/utils/global-loading'
 import { takeQueuedOpenPublic } from '@/utils/public-open'
+import { queueCityAdd } from '@/utils/city-entry'
 import {
   buildMarkers,
   findShopIdByMarker,
@@ -58,7 +64,36 @@ interface MarkerInfo {
   shopId: string
 }
 
-const shops = ref<(ShopView | PublicShopView)[]>([])
+type MapShopView = ShopView | PublicShopView | CityShopView
+type MapScope =
+  | { kind: 'group' }
+  | { kind: 'city'; cityCode: string; cityName: string }
+
+const MAP_SCOPE_KEY = 'mapScope'
+
+function loadMapScope(): MapScope {
+  try {
+    const raw = uni.getStorageSync(MAP_SCOPE_KEY)
+    if (!raw) return { kind: 'group' }
+    const parsed = JSON.parse(raw) as MapScope
+    if (
+      parsed?.kind === 'city' &&
+      typeof parsed.cityCode === 'string' &&
+      typeof parsed.cityName === 'string'
+    ) {
+      return parsed
+    }
+  } catch {
+    // 缓存损坏时回到清单视图
+  }
+  return { kind: 'group' }
+}
+
+const mapScope = ref<MapScope>(loadMapScope())
+const cities = ref<CitySummary[]>([])
+const citiesLoading = ref(false)
+
+const shops = ref<MapShopView[]>([])
 const markers = ref<Marker[]>([])
 const markerMap = new Map<number, string>()
 
@@ -83,6 +118,7 @@ const folderFilter = ref('all')
 const loadingFolders = ref(false)
 
 const visibleShops = computed(() => {
+  if (mapScope.value.kind === 'city') return shops.value
   if (folderFilter.value === 'all') return shops.value
   if (folderFilter.value === 'none') {
     return shops.value.filter((s) => !s.folderId)
@@ -91,6 +127,11 @@ const visibleShops = computed(() => {
 })
 
 const currentFilterLabel = computed(() => {
+  const scope = mapScope.value
+  if (scope.kind === 'city') {
+    const city = cities.value.find((item) => item.cityCode === scope.cityCode)
+    return city ? `${city.shopCount} 家` : '城市'
+  }
   if (folderFilter.value === 'all') return '全部'
   if (folderFilter.value === 'none') return '未分类'
   const f = folders.value.find((x) => x.id === folderFilter.value)
@@ -104,7 +145,7 @@ const loadFailed = ref(false)
 const groupsSettled = ref(false)
 const shopsSettled = ref(false)
 
-const selectedShop = ref<(ShopView | PublicShopView) | null>(null)
+const selectedShop = ref<MapShopView | null>(null)
 const showDetail = ref(false)
 
 const anyOverlayOpen = computed(() => showLayerPicker.value || showDetail.value)
@@ -124,7 +165,18 @@ let markerSeq = 0
 let shopRequestSeq = 0
 let refreshSeq = 0
 let folderRequestSeq = 0
+let cityRequestSeq = 0
 let highlightTimer: ReturnType<typeof setTimeout> | null = null
+
+function persistMapScope() {
+  uni.setStorageSync(MAP_SCOPE_KEY, JSON.stringify(mapScope.value))
+}
+
+function currentScopeKey() {
+  return mapScope.value.kind === 'city'
+    ? `city:${mapScope.value.cityCode}`
+    : `group:${currentGroup.value?.id || publicId.value}`
+}
 
 function isWeixinDevtools() {
   try {
@@ -147,11 +199,11 @@ function moveMapToLocation(latitude: number, longitude: number) {
   })
 }
 
-function shopOf(s: ShopView | PublicShopView): ShopView | null {
+function shopOf(s: MapShopView): ShopView | null {
   return 'creatorName' in s ? (s as ShopView) : null
 }
 
-function buildMarkerView(list: (ShopView | PublicShopView)[]) {
+function buildMarkerView(list: MapShopView[]) {
   const { markers: built, mapping } = buildMarkers(list, markerSeq)
   markerSeq += built.length
   markerMap.clear()
@@ -201,7 +253,7 @@ function clearShopState() {
   highlightShopId.value = ''
 }
 
-async function fitShopMarkers(list: (ShopView | PublicShopView)[]) {
+async function fitShopMarkers(list: MapShopView[]) {
   if (list.length === 0) return
   await nextTick()
   const mapCtx = uni.createMapContext('shopMap')
@@ -298,10 +350,12 @@ async function loadGroups(seq: number) {
 
 async function loadShops() {
   const seq = ++shopRequestSeq
+  const scopeKey = currentScopeKey()
+  const isCityView = mapScope.value.kind === 'city'
   const memberGroupId = currentGroup.value?.id || ''
   const isMemberView = isMember.value && Boolean(memberGroupId)
   const targetPublicId = publicId.value
-  if (!isMemberView && !targetPublicId) {
+  if (!isCityView && !isMemberView && !targetPublicId) {
     clearShopState()
     errorMsg.value = ''
     loadFailed.value = false
@@ -313,10 +367,12 @@ async function loadShops() {
   loading.value = true
   errorMsg.value = ''
   loadFailed.value = false
-  let loadedShops: (ShopView | PublicShopView)[] | null = null
+  let loadedShops: MapShopView[] | null = null
   try {
-    let list: (ShopView | PublicShopView)[]
-    if (isMemberView) {
+    let list: MapShopView[]
+    if (mapScope.value.kind === 'city') {
+      list = await listMyCityMapShops(mapScope.value.cityCode)
+    } else if (isMemberView) {
       try {
         list = await listMemberMapShops(memberGroupId)
       } catch (err) {
@@ -340,7 +396,7 @@ async function loadShops() {
     } else {
       list = await listPublicMapShops(targetPublicId)
     }
-    if (seq !== shopRequestSeq || targetPublicId !== publicId.value) return
+    if (seq !== shopRequestSeq || scopeKey !== currentScopeKey()) return
     shops.value = list
     buildMarkerView(visibleShops.value)
     checkNewShopHighlight()
@@ -348,7 +404,7 @@ async function loadShops() {
     loadedOnce.value = true
     shopsSettled.value = true
   } catch (err) {
-    if (seq !== shopRequestSeq || targetPublicId !== publicId.value) return
+    if (seq !== shopRequestSeq || scopeKey !== currentScopeKey()) return
     clearShopState()
     errorMsg.value = err instanceof Error ? err.message : '加载失败'
     loadFailed.value = true
@@ -357,8 +413,30 @@ async function loadShops() {
   } finally {
     if (seq === shopRequestSeq) loading.value = false
   }
-  if (loadedShops && seq === shopRequestSeq && targetPublicId === publicId.value) {
+  if (loadedShops && seq === shopRequestSeq && scopeKey === currentScopeKey()) {
     await fitShopMarkers(visibleShops.value)
+  }
+}
+
+async function loadCities() {
+  const seq = ++cityRequestSeq
+  citiesLoading.value = true
+  try {
+    const list = await listMyCities()
+    if (seq !== cityRequestSeq) return
+    cities.value = list
+    const scope = mapScope.value
+    if (
+      scope.kind === 'city' &&
+      !list.some((item) => item.cityCode === scope.cityCode)
+    ) {
+      mapScope.value = { kind: 'group' }
+      persistMapScope()
+    }
+  } catch {
+    if (seq === cityRequestSeq && cities.value.length === 0) cities.value = []
+  } finally {
+    if (seq === cityRequestSeq) citiesLoading.value = false
   }
 }
 
@@ -405,8 +483,9 @@ async function refresh() {
   if (withLoading) showLoading()
   try {
     if (!(await loadGroups(seq)) || seq !== refreshSeq) return
+    if (mapScope.value.kind === 'city') await loadCities()
     loadedOnce.value = true
-    await loadFolders()
+    if (mapScope.value.kind === 'group') await loadFolders()
     await loadShops()
   } finally {
     if (withLoading && seq === refreshSeq) hideLoading()
@@ -472,7 +551,7 @@ function openNearby() {
   showNearby.value = true
 }
 
-function formattedDistance(s: ShopView | PublicShopView): string {
+function formattedDistance(s: MapShopView): string {
   if (!currentPosition.value) return '未定位'
   return formatDistance(haversineDistance(currentPosition.value, s))
 }
@@ -494,6 +573,12 @@ const showEmptyState = computed(() => {
 })
 
 function goAddShop() {
+  if (mapScope.value.kind === 'city') {
+    queueCityAdd({
+      cityCode: mapScope.value.cityCode,
+      cityName: mapScope.value.cityName,
+    })
+  }
   uni.switchTab({ url: '/pages/food/food' })
 }
 
@@ -527,15 +612,21 @@ function goManage() {
 
 function openGroupPicker() {
   showLayerPicker.value = true
+  void loadCities()
 }
 
 type GroupOption = (typeof groupOptions.value)[number]
 
 function onPickerSelect({ publicId: pid, folderValue }: { publicId: string; folderValue?: string }) {
-  if (pid !== publicId.value) {
+  const switchedFromCity = mapScope.value.kind === 'city'
+  const groupChanged = pid !== publicId.value
+  mapScope.value = { kind: 'group' }
+  persistMapScope()
+  if (groupChanged) {
     const opt = groupOptions.value.find((o) => o.publicId === pid)
     if (!opt) return
     refreshSeq += 1
+    hideLoading()
     requestedPublicId.value = ''
     groupsSettled.value = true
     selectedShop.value = null
@@ -564,8 +655,32 @@ function onPickerSelect({ publicId: pid, folderValue }: { publicId: string; fold
     void loadShops()
   }
   if (folderValue !== undefined) {
-    onFolderFilterChange(folderValue)
+    if (folderFilter.value !== folderValue) {
+      onFolderFilterChange(folderValue)
+    } else if (switchedFromCity && !groupChanged) {
+      void loadShops()
+    }
+  } else if (switchedFromCity && !groupChanged) {
+    void loadShops()
   }
+}
+
+function onCitySelect({ cityCode, cityName }: { cityCode: string; cityName: string }) {
+  refreshSeq += 1
+  hideLoading()
+  mapScope.value = { kind: 'city', cityCode, cityName }
+  persistMapScope()
+  folderFilter.value = 'all'
+  selectedShop.value = null
+  showDetail.value = false
+  highlightShopId.value = ''
+  loadedOnce.value = true
+  shopsSettled.value = false
+  void loadShops()
+}
+
+function cityShopOf(shop: MapShopView): CityShopView | null {
+  return 'sourceGroupName' in shop ? shop as CityShopView : null
 }
 
 onLoad((query) => {
@@ -574,6 +689,8 @@ onLoad((query) => {
   const queued = takeQueuedOpenPublic()
   const rawPid = (queued?.publicId || query?.publicId) as string | undefined
   if (rawPid) {
+    mapScope.value = { kind: 'group' }
+    persistMapScope()
     try {
       requestedPublicId.value = decodeURIComponent(rawPid)
     } catch {
@@ -617,8 +734,12 @@ onUnload(() => {
 
     <view class="top-bar">
       <view class="group-chip" @click="openGroupPicker">
-        <text class="chip-name">{{ currentGroup ? currentGroup.name : '未选择清单' }}</text>
-        <text v-if="currentGroup" class="chip-tag">{{ currentFilterLabel }}</text>
+        <text class="chip-name">
+          {{ mapScope.kind === 'city' ? mapScope.cityName : (currentGroup ? currentGroup.name : '未选择清单') }}
+        </text>
+        <text v-if="mapScope.kind === 'city' || currentGroup" class="chip-tag">
+          {{ mapScope.kind === 'city' ? `城市 · ${currentFilterLabel}` : currentFilterLabel }}
+        </text>
         <text class="chip-arrow">▾</text>
       </view>
       <view class="legend">
@@ -635,8 +756,13 @@ onUnload(() => {
       :options="groupOptions"
       :current-public-id="publicId"
       :current-folder-filter="folderFilter"
+      :city-options="cities"
+      :current-scope="mapScope.kind"
+      :current-city-code="mapScope.kind === 'city' ? mapScope.cityCode : ''"
+      :city-loading="citiesLoading"
       mode="columns"
       @select="onPickerSelect"
+      @select-city="onCitySelect"
     />
 
     <view v-if="!currentGroup && groupsSettled" class="no-group-tip" @click="goManage">
@@ -645,7 +771,9 @@ onUnload(() => {
     </view>
 
     <view v-if="showEmptyState" class="empty-tip">
-      <text class="empty-text">清单里还没有内容</text>
+      <text class="empty-text">
+        {{ mapScope.kind === 'city' ? '这个城市还没有店铺' : '清单里还没有内容' }}
+      </text>
       <text v-if="isMember" class="empty-action" @click="goAddShop">去添加 ›</text>
     </view>
 
@@ -668,6 +796,10 @@ onUnload(() => {
         <image class="fab-icon" src="/static/tabbar/离我最近.png" mode="aspectFit" />
         <text class="fab-label">离我最近</text>
       </view>
+      <view v-if="mapScope.kind === 'city'" class="fab pill" @click="goAddShop">
+        <text class="fab-add-icon">＋</text>
+        <text class="fab-label">添加</text>
+      </view>
     </view>
 
     <!-- 店铺详情浮层 -->
@@ -679,6 +811,9 @@ onUnload(() => {
       </view>
       <text class="detail-address">{{ selectedShop.address }}</text>
       <text v-if="selectedShop.remark" class="detail-remark">{{ selectedShop.remark }}</text>
+      <text v-if="cityShopOf(selectedShop)" class="detail-source">
+        来自清单：{{ cityShopOf(selectedShop)?.sourceGroupName }}
+      </text>
       <view class="detail-bottom">
         <text class="detail-distance">直线距离：{{ formattedDistance(selectedShop) }}</text>
         <button class="nav-btn" @click="navigate">导航前往</button>
@@ -980,6 +1115,14 @@ onUnload(() => {
   height: 36rpx;
 }
 
+.fab-add-icon {
+  width: 40rpx;
+  text-align: center;
+  font-size: 38rpx;
+  line-height: 1;
+  color: #37291a;
+}
+
 .detail-sheet {
   position: absolute;
   left: 16rpx;
@@ -1054,6 +1197,15 @@ onUnload(() => {
 .detail-creator {
   font-size: 22rpx;
   color: #36393B;
+}
+
+.detail-source {
+  align-self: flex-start;
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  background-color: #f0ece7;
+  font-size: 22rpx;
+  color: #6b6259;
 }
 
 .nav-btn {

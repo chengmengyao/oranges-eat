@@ -1,6 +1,7 @@
 export interface CityFolderLike {
   id: string
   name: string
+  cityCode?: string
 }
 
 interface SuffixMatch {
@@ -64,6 +65,15 @@ export function normalizeCityName(value: string): string {
 }
 
 /**
+ * 跨清单聚合使用的稳定城市标识。旧城市子清单无需迁移即可生成相同标识。
+ * 当前以规范化后的行政区名称作为 code，后续可无损映射到官方行政区划编码。
+ */
+export function cityCodeFromName(value: string): string {
+  const normalized = normalizeCityName(value)
+  return normalized.length >= 2 ? normalized : ''
+}
+
+/**
  * 在城市子清单中寻找与给定城市匹配的一项：名称精确一致或互为简称包含，忽略括号备注。
  * 找不到返回 null。
  */
@@ -75,7 +85,7 @@ export function matchCityFolder<T extends CityFolderLike>(
   if (!cityKey || cityKey.length < 2) return null
   let best: { score: number; item: T } | null = null
   for (const folder of folders) {
-    const folderKey = normalizeCityName(folder.name)
+    const folderKey = folder.cityCode || normalizeCityName(folder.name)
     if (!folderKey || folderKey.length < 2) continue
     let score = 0
     if (folderKey === cityKey) {

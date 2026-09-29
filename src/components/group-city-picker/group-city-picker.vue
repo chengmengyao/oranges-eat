@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { FolderView, GroupView } from '@/types/group'
-import { listPublicFolders } from '@/services/group'
+import type { CitySummary } from '@/types/shop'
+import { listFolders, listPublicFolders } from '@/services/group'
 
 export type GroupCityOption = GroupView | { id: ''; publicId: string; name: string }
 
@@ -15,6 +16,10 @@ const props = withDefaults(
     title?: string
     hideAllOption?: boolean
     showUncategorizedAlways?: boolean
+    cityOptions?: CitySummary[]
+    currentScope?: 'group' | 'city'
+    currentCityCode?: string
+    cityLoading?: boolean
   }>(),
   {
     currentFolderFilter: 'all',
@@ -22,12 +27,16 @@ const props = withDefaults(
     title: '选择清单与城市',
     hideAllOption: false,
     showUncategorizedAlways: false,
+    currentScope: 'group',
+    currentCityCode: '',
+    cityLoading: false,
   },
 )
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
   (e: 'select', payload: { publicId: string; folderValue?: string; folderName?: string }): void
+  (e: 'selectCity', payload: { cityCode: string; cityName: string }): void
 }>()
 
 const expandedPublicId = ref('')
@@ -36,6 +45,8 @@ const folderCache = ref<Record<string, { folders: FolderView[]; uncategorizedCou
 const inflightFolderPids = new Set<string>()
 
 const activeColumnPublicId = ref('')
+const scopeTab = ref<'group' | 'city'>('group')
+const showScopeTabs = computed(() => props.cityOptions !== undefined)
 
 const columnOptions = computed(() => props.options)
 const activeColumnGroupName = computed(
@@ -61,6 +72,7 @@ watch(
   () => props.modelValue,
   (open) => {
     if (!open) return
+    scopeTab.value = props.currentScope
     if (props.mode === 'tree' && props.currentPublicId) {
       expandedPublicId.value = props.currentPublicId
       void loadFolderCache(props.currentPublicId, true)
@@ -91,7 +103,10 @@ async function loadFolderCache(pid: string, force = false) {
   inflightFolderPids.add(pid)
   loadingFolderPublicId.value = pid
   try {
-    const res = await listPublicFolders(pid)
+    const option = columnOptions.value.find((item) => item.publicId === pid)
+    // 已加入清单优先走成员接口，兼容历史清单 visibility 缺失或非 public_read 的情况；
+    // 访客清单再走公开只读接口。
+    const res = option?.id ? await listFolders(option.id) : await listPublicFolders(pid)
     folderCache.value = { ...folderCache.value, [pid]: res }
   } catch {
     if (!folderCache.value[pid]) {
@@ -136,6 +151,11 @@ function pickColumnGroup(publicId: string) {
   activeColumnPublicId.value = publicId
   void loadFolderCache(publicId)
 }
+
+function selectCity(city: CitySummary) {
+  emit('selectCity', { cityCode: city.cityCode, cityName: city.cityName })
+  close()
+}
 </script>
 
 <template>
@@ -154,7 +174,44 @@ function pickColumnGroup(publicId: string) {
           <text>✕</text>
         </view>
       </view>
-      <view v-if="mode === 'columns'" class="gcp-columns">
+      <view v-if="showScopeTabs" class="gcp-scope-tabs">
+        <view
+          class="gcp-scope-tab"
+          :class="{ active: scopeTab === 'city' }"
+          @click="scopeTab = 'city'"
+        >按城市</view>
+        <view
+          class="gcp-scope-tab"
+          :class="{ active: scopeTab === 'group' }"
+          @click="scopeTab = 'group'"
+        >按清单</view>
+      </view>
+      <scroll-view
+        v-if="showScopeTabs && scopeTab === 'city'"
+        scroll-y
+        class="gcp-city-list"
+        :show-scrollbar="false"
+      >
+        <view v-if="cityLoading" class="gcp-city-empty">城市加载中…</view>
+        <view v-else-if="!cityOptions?.length" class="gcp-city-empty">
+          已加入的清单中还没有归入城市的店铺
+        </view>
+        <template v-else>
+          <view
+            v-for="city in cityOptions ?? []"
+            :key="city.cityCode"
+            class="gcp-city-row"
+            :class="{ selected: currentScope === 'city' && currentCityCode === city.cityCode }"
+            @click="selectCity(city)"
+          >
+            <view class="gcp-city-main">
+              <text class="gcp-city-name">{{ city.cityName }}</text>
+            </view>
+            <text class="gcp-city-count">{{ city.shopCount }} 家</text>
+          </view>
+        </template>
+      </scroll-view>
+      <view v-else-if="mode === 'columns'" class="gcp-columns">
         <scroll-view scroll-y class="gcp-column-left" :show-scrollbar="false">
           <view
             v-for="opt in options"
@@ -357,6 +414,80 @@ function pickColumnGroup(publicId: string) {
 
 .gcp-scroll {
   max-height: 70vh;
+}
+
+.gcp-scope-tabs {
+  display: flex;
+  margin: 0 24rpx 20rpx;
+  padding: 6rpx;
+  border-radius: 999rpx;
+  background: #e8e5e0;
+}
+
+.gcp-scope-tab {
+  flex: 1;
+  padding: 18rpx 12rpx;
+  border-radius: 999rpx;
+  text-align: center;
+  font-size: 28rpx;
+  color: #6f6a63;
+}
+
+.gcp-scope-tab.active {
+  color: #1a1a1a;
+  font-weight: 700;
+  background: #ffffff;
+  box-shadow: 0 2rpx 10rpx rgba(54, 57, 59, 0.08);
+}
+
+.gcp-city-list {
+  height: 58vh;
+  padding: 0 24rpx;
+  box-sizing: border-box;
+}
+
+.gcp-city-row {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin-bottom: 12rpx;
+  padding: 28rpx 30rpx;
+  border: 2rpx solid transparent;
+  border-radius: 28rpx;
+  background: #ffffff;
+}
+
+.gcp-city-row.selected {
+  border-color: #36393b;
+  background: #faf8f5;
+}
+
+.gcp-city-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.gcp-city-name {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.gcp-city-count,
+.gcp-city-empty {
+  font-size: 24rpx;
+  color: #8a857e;
+}
+
+.gcp-city-count {
+  flex: none;
+}
+
+.gcp-city-empty {
+  padding: 100rpx 40rpx;
+  text-align: center;
 }
 
 /* ===== 左右两列联动 ===== */

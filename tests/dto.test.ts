@@ -6,6 +6,8 @@ function dbShop(overrides = {}) {
     _id: 'shop-abc',
     groupId: 'group-1',
     folderId: 'folder-beijing',
+    cityCode: '北京',
+    cityName: '北京',
     name: '示例饭店',
     category: 'restaurant',
     latitude: 39.9,
@@ -45,6 +47,12 @@ describe('toPublicShopView 访客 DTO 脱敏', () => {
     expect(toPublicShopView(dbShop()).folderId).toBe('folder-beijing')
     expect(toPublicShopView(dbShop({ folderId: null })).folderId).toBeNull()
     expect(toPublicShopView(dbShop()).folderId).not.toBeUndefined()
+  })
+
+  it('透传城市聚合字段，历史数据缺失时返回 null', () => {
+    expect(toPublicShopView(dbShop()).cityCode).toBe('北京')
+    expect(toPublicShopView(dbShop()).cityName).toBe('北京')
+    expect(toPublicShopView(dbShop({ cityCode: undefined, cityName: undefined })).cityCode).toBeNull()
   })
 })
 

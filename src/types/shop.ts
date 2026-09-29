@@ -4,6 +4,8 @@ export interface Shop {
   _id: string
   groupId: string
   folderId: string | null
+  cityCode?: string | null
+  cityName?: string | null
   name: string
   category: ShopCategory
   latitude: number
@@ -20,6 +22,8 @@ export interface Shop {
 export interface ShopView {
   id: string
   folderId: string | null
+  cityCode?: string | null
+  cityName?: string | null
   name: string
   category: ShopCategory
   latitude: number
@@ -35,3 +39,28 @@ export interface ShopView {
 }
 
 export type PublicShopView = Omit<ShopView, 'creatorName' | 'isMine' | 'canEdit' | 'canDelete'>
+
+export interface CitySummary {
+  cityCode: string
+  cityName: string
+  shopCount: number
+  groupCount: number
+}
+
+export interface CityShopView extends ShopView {
+  cityCode: string
+  cityName: string
+  sourceGroupId: string
+  sourceGroupName: string
+  sourcePublicId: string
+}
+
+export interface CityStandaloneShopView extends ShopView {
+  cityCode: string
+  cityName: string
+}
+
+export type CitySharedShopView = Omit<
+  CityStandaloneShopView,
+  'creatorName' | 'isMine' | 'canEdit' | 'canDelete'
+>

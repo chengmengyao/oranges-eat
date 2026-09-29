@@ -1,0 +1,15 @@
+const BRACKET_SPLIT_RE = /[（(]/
+const SUFFIX_STRIP_RE = /(?:市|地区|盟|自治州)$/
+
+function normalizeCityName(value) {
+  const raw = typeof value === 'string' ? value.replace(/\s+/g, '').trim() : ''
+  const main = raw.split(BRACKET_SPLIT_RE)[0]
+  return main.replace(SUFFIX_STRIP_RE, '')
+}
+
+function cityCodeFromName(value) {
+  const normalized = normalizeCityName(value)
+  return normalized.length >= 2 ? normalized : ''
+}
+
+module.exports = { cityCodeFromName }

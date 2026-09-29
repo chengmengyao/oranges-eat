@@ -70,6 +70,8 @@ export interface Folder {
   _id: string
   groupId: string
   name: string
+  cityCode?: string
+  cityName?: string
   sortOrder: number
   createdByOpenId: string
   createdAt: Date
@@ -79,6 +81,8 @@ export interface Folder {
 export type FolderView = {
   id: string
   name: string
+  cityCode?: string
+  cityName?: string
   sortOrder: number
   shopCount?: number
 }

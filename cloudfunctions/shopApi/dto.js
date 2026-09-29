@@ -9,6 +9,8 @@ function toPublicShopView(shop) {
   return {
     id: shop._id,
     folderId: shop.folderId || null,
+    cityCode: shop.cityCode || null,
+    cityName: shop.cityName || null,
     name: shop.name,
     category: shop.category,
     latitude: shop.latitude,
@@ -25,10 +27,12 @@ function toShopView(shop, member) {
   const isOwner = Boolean(member && member.role === 'owner')
   const isMine = Boolean(member && shop.createdByOpenId === member.userOpenId)
   const canEdit = isOwner || isMine
-  const canDelete = canEdit
+  const canDelete = member && member.allowDelete === false ? false : canEdit
   return {
     id: shop._id,
     folderId: shop.folderId || null,
+    cityCode: shop.cityCode || null,
+    cityName: shop.cityName || null,
     name: shop.name,
     category: shop.category,
     latitude: shop.latitude,

@@ -1,5 +1,13 @@
 import { callFunction } from '@/utils/cloud'
-import type { PublicShopView, ShopCategory, ShopView } from '@/types/shop'
+import type {
+  CityShopView,
+  CityStandaloneShopView,
+  CitySharedShopView,
+  CitySummary,
+  PublicShopView,
+  ShopCategory,
+  ShopView,
+} from '@/types/shop'
 import { PAGE_SIZE } from '@/constants/shop'
 
 export interface PagedShops<T> {
@@ -40,6 +48,88 @@ export async function listMemberMapShops(groupId: string): Promise<ShopView[]> {
   return callFunction('shopApi', {
     action: 'listMemberMapShops',
     groupId,
+  })
+}
+
+export async function listMyCities(): Promise<CitySummary[]> {
+  return callFunction('shopApi', { action: 'listMyCities' })
+}
+
+export async function listMyCityMapShops(cityCode: string): Promise<CityShopView[]> {
+  return callFunction('shopApi', {
+    action: 'listMyCityMapShops',
+    cityCode,
+  })
+}
+
+export async function listMyCityShops(
+  cityCode: string,
+  category?: ShopCategory | 'all',
+): Promise<CityStandaloneShopView[]> {
+  return callFunction('shopApi', {
+    action: 'listMyCityShops',
+    cityCode,
+    category: category || 'all',
+  })
+}
+
+export async function createCityShop(
+  input: CreateShopInput & { cityCode: string; cityName: string },
+): Promise<CityStandaloneShopView> {
+  return callFunction('shopApi', { action: 'createCityShop', ...input })
+}
+
+export async function updateCityShop(
+  shopId: string,
+  input: Omit<CreateShopInput, 'requestId'> & { expectedUpdatedAt: number },
+): Promise<CityStandaloneShopView> {
+  return callFunction('shopApi', { action: 'updateCityShop', shopId, ...input })
+}
+
+export async function deleteCityShop(shopId: string): Promise<{ deleted: boolean }> {
+  return callFunction('shopApi', { action: 'deleteCityShop', shopId })
+}
+
+export interface CityShareResult {
+  token: string
+  shortCode: string
+  cityCode: string
+  cityName: string
+  expiresAt: number
+}
+
+export async function createCityShare(cityCode: string, cityName: string): Promise<CityShareResult> {
+  return callFunction('shopApi', { action: 'createCityShare', cityCode, cityName })
+}
+
+export async function createCityShareQrCode(token: string): Promise<{
+  fileID: string
+  cityCode: string
+  cityName: string
+  expiresAt: number
+}> {
+  return callFunction('shopApi', { action: 'createCityShareQrCode', token })
+}
+
+export async function getSharedCity(token: string): Promise<{
+  cityCode: string
+  cityName: string
+  shops: CitySharedShopView[]
+}> {
+  return callFunction('shopApi', { action: 'getSharedCity', token })
+}
+
+export async function acceptCityShare(token?: string, code?: string, displayName?: string): Promise<{
+  groupId: string
+  publicId: string
+  name: string
+  duplicated: boolean
+}> {
+  return callFunction('shopApi', {
+    action: 'acceptCityShare',
+    token: token || '',
+    code: code || '',
+    displayName: displayName || '朋友',
   })
 }
 

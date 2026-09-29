@@ -1,10 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cityCodeFromName,
   cityFolderLabel,
   extractCityName,
   matchCityFolder,
   normalizeCityName,
 } from '@/utils/city'
+
+const {
+  cityIdentity,
+} = require('../cloudfunctions/shopApi/city') as {
+  cityIdentity: (folder: { name: string; cityCode?: string; cityName?: string } | null) =>
+    | { cityCode: string; cityName: string }
+    | null
+}
 
 describe('extractCityName', () => {
   it('普通地级市', () => {
@@ -63,6 +72,23 @@ describe('normalizeCityName', () => {
     expect(normalizeCityName('成都市')).toBe('成都')
     expect(normalizeCityName('成都（2024 出差）')).toBe('成都')
     expect(normalizeCityName('北京(探亲)')).toBe('北京')
+  })
+})
+
+describe('cityCodeFromName', () => {
+  it('同一城市的常见写法生成相同标识', () => {
+    expect(cityCodeFromName('北京市')).toBe('北京')
+    expect(cityCodeFromName('北京（周末）')).toBe('北京')
+    expect(cityCodeFromName('深圳市')).toBe('深圳')
+  })
+
+  it('云函数兼容没有 cityCode 的历史城市子清单', () => {
+    expect(cityIdentity({ name: '成都市' })).toEqual({ cityCode: '成都', cityName: '成都' })
+    expect(cityIdentity({ name: '成都', cityCode: '成都', cityName: '成都' })).toEqual({
+      cityCode: '成都',
+      cityName: '成都',
+    })
+    expect(cityIdentity(null)).toBeNull()
   })
 })
 

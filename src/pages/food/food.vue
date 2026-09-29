@@ -2,10 +2,24 @@
 import { computed, ref, watch } from 'vue'
 import { onShow, onReachBottom } from '@dcloudio/uni-app'
 import type { FolderView, GroupView } from '@/types/group'
-import type { PublicShopView, ShopCategory, ShopView } from '@/types/shop'
+import type {
+  CityStandaloneShopView,
+  CityShopView,
+  CitySummary,
+  PublicShopView,
+  ShopCategory,
+  ShopView,
+} from '@/types/shop'
 import {
   listPublicShops,
   listMemberShops,
+  listMyCities,
+  listMyCityMapShops,
+  createCityShop,
+  updateCityShop,
+  deleteCityShop,
+  createCityShare,
+  createCityShareQrCode,
   createShop,
   updateShop,
   deleteShop,
@@ -21,6 +35,7 @@ import {
   matchCityFolder,
 } from '@/utils/city'
 import { hideLoading, showLoading } from '@/utils/global-loading'
+import { takeQueuedCityAdd } from '@/utils/city-entry'
 
 const store = useGroupStore()
 
@@ -39,7 +54,15 @@ const currentGroup = ref<GroupView | null>(null)
 const publicId = ref('')
 const groupId = ref('')
 
-const shops = ref<(ShopView | PublicShopView)[]>([])
+type FoodShopView = ShopView | PublicShopView | CityStandaloneShopView | CityShopView
+type FoodScope =
+  | { kind: 'group' }
+  | { kind: 'city'; cityCode: string; cityName: string }
+
+const shops = ref<FoodShopView[]>([])
+const foodScope = ref<FoodScope>({ kind: 'group' })
+const cities = ref<CitySummary[]>([])
+const citiesLoading = ref(false)
 const hasMore = ref(false)
 const cursor = ref('')
 const loading = ref(false)
@@ -104,8 +127,12 @@ watch(showForm, (open) => {
 
 const deletingId = ref('')
 
-function isShopView(s: ShopView | PublicShopView): s is ShopView {
+function isShopView(s: FoodShopView): s is ShopView | CityStandaloneShopView | CityShopView {
   return 'creatorName' in s
+}
+
+function isStandaloneCityShop(s: FoodShopView): s is CityStandaloneShopView {
+  return 'cityCode' in s && !('sourceGroupId' in s)
 }
 
 const groupsLoadSeq = ref(0)
@@ -160,6 +187,21 @@ async function loadFolders() {
   }
 }
 
+async function loadCities() {
+  citiesLoading.value = true
+  try {
+    cities.value = await listMyCities()
+    const scope = foodScope.value
+    if (scope.kind === 'city' && !cities.value.some((city) => city.cityCode === scope.cityCode)) {
+      foodScope.value = { kind: 'group' }
+    }
+  } catch {
+    cities.value = []
+  } finally {
+    citiesLoading.value = false
+  }
+}
+
 const groupPickerOptions = computed(() => {
   const options: (GroupView | { id: ''; publicId: string; name: string })[] = [
     ...store.state.groups,
@@ -183,7 +225,10 @@ async function loadPage(reset: boolean) {
   loading.value = true
   errorMsg.value = ''
   const seq = ++requestSeq.value
-  const context = `${isMember.value ? 'member' : 'guest'}:${groupId.value || publicId.value}:${category.value}:${folderFilter.value}`
+  const scopeKey = foodScope.value.kind === 'city'
+    ? `city:${foodScope.value.cityCode}`
+    : `group:${groupId.value || publicId.value}`
+  const context = `${isMember.value ? 'member' : 'guest'}:${scopeKey}:${category.value}:${folderFilter.value}`
   if (reset) {
     if (context !== lastContext.value) {
       lastContext.value = context
@@ -193,9 +238,14 @@ async function loadPage(reset: boolean) {
   }
   try {
     let nextCursor: string | undefined = undefined
-    let list: (ShopView | PublicShopView)[] = []
+    let list: FoodShopView[] = []
     let more = false
-    if (isMember.value && groupId.value) {
+    if (foodScope.value.kind === 'city') {
+      const cityShops = await listMyCityMapShops(foodScope.value.cityCode)
+      list = category.value === 'all'
+        ? cityShops
+        : cityShops.filter((shop) => shop.category === category.value)
+    } else if (isMember.value && groupId.value) {
       const res = await listMemberShops(groupId.value, reset ? undefined : cursor.value, category.value, folderFilter.value)
       list = res.shops
       more = res.hasMore
@@ -312,7 +362,7 @@ function openCreate() {
   formMode.value = 'create'
   editingId.value = ''
   createRequestId.value = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-  targetGroupId.value = groupId.value
+  targetGroupId.value = foodScope.value.kind === 'group' ? groupId.value : ''
   const defaultFolderId =
     folderFilter.value !== 'all' && folderFilter.value !== 'none' ? folderFilter.value : null
   selectedFolderName.value = defaultFolderId ? store.folderName(defaultFolderId) : ''
@@ -329,11 +379,15 @@ function openCreate() {
   showForm.value = true
 }
 
-function openEdit(s: ShopView) {
+function openEdit(s: ShopView | CityStandaloneShopView | CityShopView) {
+  if (foodScope.value.kind === 'city' && !isStandaloneCityShop(s)) {
+    uni.showToast({ title: '清单店铺请切换到所属清单后编辑', icon: 'none' })
+    return
+  }
   cancelAutoCity()
   formMode.value = 'edit'
   editingId.value = s.id
-  targetGroupId.value = groupId.value
+  targetGroupId.value = 'cityCode' in s ? '' : groupId.value
   selectedFolderName.value = s.folderId ? store.folderName(s.folderId) || '' : '未分类'
   form.value = {
     name: s.name,
@@ -346,6 +400,34 @@ function openEdit(s: ShopView) {
   }
   formError.value = ''
   showForm.value = true
+}
+
+function foodShopCityName(shop: FoodShopView): string {
+  if ('cityName' in shop && shop.cityName) return shop.cityName
+  return store.folderName(shop.folderId) || '未分类'
+}
+
+const cityShareLoading = ref(false)
+const cityShareQrFileId = ref('')
+const showCityShareQr = ref(false)
+const cityShareError = ref('')
+
+async function shareCurrentCity() {
+  if (foodScope.value.kind !== 'city') return
+  cityShareLoading.value = true
+  cityShareError.value = ''
+  cityShareQrFileId.value = ''
+  try {
+    const share = await createCityShare(foodScope.value.cityCode, foodScope.value.cityName)
+    const qr = await createCityShareQrCode(share.token)
+    cityShareQrFileId.value = qr.fileID
+    showCityShareQr.value = true
+  } catch (err) {
+    cityShareError.value = err instanceof Error ? err.message : '分享失败'
+    showCityShareQr.value = true
+  } finally {
+    cityShareLoading.value = false
+  }
 }
 
 function openFolderPicker() {
@@ -404,9 +486,12 @@ const targetGroupName = computed(() => {
 const selectedFolderName = ref('')
 
 const createCityText = computed(() => {
-  if (form.value.folderId) return store.folderName(form.value.folderId)
+  if (form.value.folderId) {
+    const cityName = selectedFolderName.value || store.folderName(form.value.folderId)
+    return `${targetGroupName.value || '当前清单'} › ${cityName}`
+  }
   if (autoCitying.value && autoCityLabel.value) return `${autoCityLabel.value}…`
-  return '选择所属城市'
+  return `${targetGroupName.value || '当前清单'} › 选择所属城市`
 })
 
 const createCityEmpty = computed(() => !form.value.folderId && !autoCitying.value)
@@ -438,6 +523,7 @@ async function openGroupPicker() {
     // 拉取失败时沿用已有清单列表
   } finally {
     groupsLoading.value = false
+    void loadCities()
     showGroupPicker.value = true
   }
 }
@@ -471,6 +557,7 @@ async function onPickerSelect({
       const opt = groupPickerOptions.value.find((o) => o.publicId === pid)
       if (opt) store.switchToPublic(pid, opt.name)
     }
+    foodScope.value = { kind: 'group' }
     folderFilter.value = 'all'
     try {
       await loadGroups()
@@ -496,6 +583,12 @@ async function onPickerSelect({
   }
 }
 
+function onCitySelect({ cityCode, cityName }: { cityCode: string; cityName: string }) {
+  foodScope.value = { kind: 'city', cityCode, cityName }
+  folderFilter.value = 'all'
+  resetAndLoad()
+}
+
 function onMoveTargetSelect({
   publicId: pid,
   folderValue,
@@ -516,7 +609,7 @@ function onMoveTargetSelect({
 }
 
 function currentOwnerGroupId(): string {
-  return formMode.value === 'edit' ? targetGroupId.value : groupId.value
+  return targetGroupId.value || groupId.value
 }
 
 function cancelAutoCity() {
@@ -535,7 +628,7 @@ function assignCityFolder(folder: { id: string; name: string }, beforeId: string
 
 async function candidateFoldersOf(ownerGroupId: string): Promise<FolderView[]> {
   // 编辑并跨清单移动时，当前已加载的是原清单的城市，需要实时拉取目标清单的城市
-  if (formMode.value === 'edit' && ownerGroupId !== groupId.value) {
+  if (ownerGroupId !== groupId.value) {
     try {
       const res = await listFolders(ownerGroupId)
       return res.folders
@@ -646,21 +739,51 @@ async function saveForm() {
       // 保存失败后复用同一请求 ID，避免云函数已写入但响应丢失时重复创建。
       const requestId = createRequestId.value || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
       createRequestId.value = requestId
-      const created = await createShop(groupId.value, {
-        name,
-        category: form.value.category,
-        latitude: lat,
-        longitude: lng,
-        address,
-        remark,
-        folderId: form.value.folderId,
-        requestId,
-      })
+      const created = foodScope.value.kind === 'city'
+        ? await createCityShop({
+            name,
+            category: form.value.category,
+            latitude: lat,
+            longitude: lng,
+            address,
+            remark,
+            folderId: null,
+            requestId,
+            cityCode: foodScope.value.cityCode,
+            cityName: foodScope.value.cityName,
+          })
+        : await createShop(targetGroupId.value || groupId.value, {
+            name,
+            category: form.value.category,
+            latitude: lat,
+            longitude: lng,
+            address,
+            remark,
+            folderId: form.value.folderId,
+            requestId,
+          })
       store.setLastAddedShopId(created.id)
       uni.showToast({ title: '已添加', icon: 'success' })
     } else {
-      const target = shops.value.find((s) => s.id === editingId.value) as ShopView | undefined
+      const target = shops.value.find((s) => s.id === editingId.value) as FoodShopView | undefined
       if (!target) throw new Error('店铺已不存在')
+      if (isStandaloneCityShop(target) && foodScope.value.kind === 'city') {
+        await updateCityShop(editingId.value, {
+          name,
+          category: form.value.category,
+          latitude: lat,
+          longitude: lng,
+          address,
+          remark,
+          folderId: null,
+          expectedUpdatedAt: new Date(target.updatedAt).getTime(),
+        })
+        uni.showToast({ title: '已保存', icon: 'success' })
+        showForm.value = false
+        await resetAndLoad()
+        store.markDataChanged()
+        return
+      }
       const updated = await updateShop(groupId.value, editingId.value, {
         name,
         category: form.value.category,
@@ -691,7 +814,7 @@ async function saveForm() {
   }
 }
 
-function confirmDelete(s: ShopView) {
+function confirmDelete(s: FoodShopView) {
   uni.showModal({
     title: '删除地点',
     content: `确认删除「${s.name}」？`,
@@ -701,7 +824,11 @@ function confirmDelete(s: ShopView) {
       if (!res.confirm) return
       deletingId.value = s.id
       try {
-        await deleteShop(groupId.value, s.id)
+        if (isStandaloneCityShop(s) && foodScope.value.kind === 'city') {
+          await deleteCityShop(s.id)
+        } else {
+          await deleteShop(groupId.value, s.id)
+        }
         shops.value = shops.value.filter((x) => x.id !== s.id)
         store.markDataChanged()
         uni.showToast({ title: '已删除', icon: 'none' })
@@ -727,7 +854,19 @@ const loadStatusText = computed(() => {
 })
 
 onShow(() => {
-  refresh()
+  void refresh().then(() => {
+    const pending = takeQueuedCityAdd()
+    if (!pending || !isMember.value) return
+    openCreate()
+    const matched = matchCityFolder(folders.value, pending.cityCode || pending.cityName)
+    if (matched) {
+      form.value.folderId = matched.id
+      selectedFolderName.value = matched.name
+    } else {
+      uni.showToast({ title: `请选择保存到哪个清单的「${pending.cityName}」城市`, icon: 'none' })
+      openMoveTargetPicker()
+    }
+  })
 })
 
 onReachBottom(() => {
@@ -740,9 +879,18 @@ onReachBottom(() => {
     <global-loading />
     <view class="sticky-header">
       <view v-if="currentGroup" class="group-bar" :class="{ switchable: store.state.groups.length > 0 }" @click="onGroupBarTap">
-        <text class="group-name">{{ currentGroup.name }}</text>
-        <text class="group-tag">{{ currentFilterLabel }}</text>
+        <text class="group-name">{{ foodScope.kind === 'city' ? foodScope.cityName : currentGroup.name }}</text>
+        <text class="group-tag">{{ foodScope.kind === 'city' ? `${shops.length} 家` : currentFilterLabel }}</text>
         <text v-if="store.state.groups.length > 0" class="group-arrow">▾</text>
+        <button
+          v-if="foodScope.kind === 'city'"
+          class="city-share-btn"
+          :loading="cityShareLoading"
+          :disabled="cityShareLoading"
+          @click.stop="shareCurrentCity"
+        >
+          分享城市店铺
+        </button>
       </view>
 
       <scroll-view class="category-tabs" scroll-x :show-scrollbar="false">
@@ -770,7 +918,7 @@ onReachBottom(() => {
         去添加
       </button>
       <button v-else-if="errorMsg" class="btn-plain" @click="resetAndLoad">重试</button>
-      <button v-else-if="isMember" class="btn-primary" @click="openCreate">去添加</button>
+      <button v-else-if="isMember || foodScope.kind === 'city'" class="btn-primary" @click="openCreate">去添加</button>
     </view>
 
     <view v-else class="shop-list">
@@ -782,12 +930,15 @@ onReachBottom(() => {
           </view>
           <view class="shop-meta">
             <text class="meta-pin">📍</text>
-            <text class="city-name">{{ store.folderName(s.folderId) }}</text>
+            <text class="city-name">{{ foodShopCityName(s) }}</text>
           </view>
           <text class="shop-address">{{ s.address }}</text>
           <text v-if="s.remark" class="shop-remark">{{ s.remark }}</text>
         </view>
-        <view v-if="isShopView(s) && (s.canEdit || s.canDelete)" class="shop-actions">
+        <view
+          v-if="isShopView(s) && (foodScope.kind === 'group' || isStandaloneCityShop(s)) && (s.canEdit || s.canDelete)"
+          class="shop-actions"
+        >
           <button v-if="s.canEdit" class="act-btn edit" @click="openEdit(s)">编辑</button>
           <button v-if="s.canDelete" class="act-btn del" :disabled="deletingId === s.id" @click="confirmDelete(s)">
             删除
@@ -802,7 +953,7 @@ onReachBottom(() => {
       </view>
     </view>
 
-    <button v-if="isMember" class="fab" @click="openCreate">＋</button>
+    <button v-if="isMember || foodScope.kind === 'city'" class="fab" @click="openCreate">＋</button>
 
     <wd-popup v-model="showForm" position="bottom" :z-index="1000" custom-style="padding: 40rpx 32rpx 24rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx;">
       <view class="form-body">
@@ -816,14 +967,18 @@ onReachBottom(() => {
           <button class="btn-plain picker-btn" @click="chooseLocation">选点</button>
         </view>
 
-        <view v-if="formMode === 'create'" class="picker-row">
-          <view class="picker-value" :class="{ empty: createCityEmpty }" @click="openFolderPicker">
-            {{ createCityText }}
-          </view>
-          <button class="btn-plain picker-btn" @click="openFolderPicker">选择</button>
+        <view v-if="foodScope.kind === 'city'" class="picker-row city-scope-row">
+          <view class="picker-value">{{ foodScope.cityName }} · 不归属清单</view>
         </view>
 
-        <view v-else class="picker-row">
+        <view v-else-if="formMode === 'create'" class="picker-row">
+          <view class="picker-value" :class="{ empty: createCityEmpty }" @click="openMoveTargetPicker">
+            {{ createCityText }}
+          </view>
+          <button class="btn-plain picker-btn" @click="openMoveTargetPicker">选择</button>
+        </view>
+
+        <view v-else-if="foodScope.kind === 'group'" class="picker-row">
           <view class="picker-value" :class="{ empty: editCityEmpty }" @click="openMoveTargetPicker">
             {{ targetGroupName || '当前清单' }} › {{ editCityText }}
           </view>
@@ -861,9 +1016,14 @@ onReachBottom(() => {
       :options="groupPickerOptions"
       :current-public-id="publicId"
       :current-folder-filter="folderFilter"
+      :city-options="cities"
+      :current-scope="foodScope.kind"
+      :current-city-code="foodScope.kind === 'city' ? foodScope.cityCode : ''"
+      :city-loading="citiesLoading"
       mode="columns"
       title="选择清单与城市"
       @select="onPickerSelect"
+      @select-city="onCitySelect"
     />
 
     <group-city-picker
@@ -877,6 +1037,19 @@ onReachBottom(() => {
       :show-uncategorized-always="true"
       @select="onMoveTargetSelect"
     />
+
+    <wd-popup v-model="showCityShareQr" position="bottom" :z-index="1100" custom-style="padding: 32rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx;">
+      <view class="city-share-popup">
+        <view class="city-share-popup-head">
+          <text class="city-share-popup-title">分享 {{ foodScope.kind === 'city' ? foodScope.cityName : '' }} 店铺</text>
+          <text class="sheet-close" @click="showCityShareQr = false">✕</text>
+        </view>
+        <view class="city-share-qr-wrap">
+          <image v-if="cityShareQrFileId" :src="cityShareQrFileId" class="city-share-qr" mode="aspectFit" />
+          <text v-else class="city-share-error">{{ cityShareError || '二维码生成中…' }}</text>
+        </view>
+      </view>
+    </wd-popup>
 
     <wd-popup v-model="showFolderPicker" position="bottom" :z-index="1000" custom-style="padding: 24rpx 32rpx 24rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx;">
       <view class="group-picker-body">
@@ -946,7 +1119,64 @@ onReachBottom(() => {
   color: #8E8E93;
 }
 
+.city-share-btn {
+  flex: none;
+  margin: 0;
+  padding: 0 24rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  border: 0;
+  border-radius: 32rpx;
+  background: #ffffff;
+  color: #37291a;
+  font-size: 24rpx;
+}
+
+.city-share-popup {
+  display: flex;
+  flex-direction: column;
+}
+
+.city-share-popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.city-share-popup-title {
+  color: #37291a;
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.city-share-popup-hint {
+  margin-top: 16rpx;
+  color: #8a857e;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.city-share-qr-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 420rpx;
+  margin-top: 24rpx;
+}
+
+.city-share-qr {
+  width: 400rpx;
+  height: 400rpx;
+}
+
+.city-share-error {
+  color: #b34d42;
+  font-size: 26rpx;
+}
+
 .group-name {
+  flex: 1;
+  min-width: 0;
   font-size: 40rpx;
   font-weight: 700;
   color: #1C1C1E;
