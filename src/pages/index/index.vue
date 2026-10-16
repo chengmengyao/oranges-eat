@@ -488,7 +488,8 @@ async function refresh() {
     if (mapScope.value.kind === 'group') await loadFolders()
     await loadShops()
   } finally {
-    if (withLoading && seq === refreshSeq) hideLoading()
+    // 只要本次 showLoading 过就必须成对释放，避免被新请求打断时泄漏计数、卡住全屏遮罩
+    if (withLoading) hideLoading()
   }
 }
 
@@ -626,7 +627,6 @@ function onPickerSelect({ publicId: pid, folderValue }: { publicId: string; fold
     const opt = groupOptions.value.find((o) => o.publicId === pid)
     if (!opt) return
     refreshSeq += 1
-    hideLoading()
     requestedPublicId.value = ''
     groupsSettled.value = true
     selectedShop.value = null
@@ -667,7 +667,6 @@ function onPickerSelect({ publicId: pid, folderValue }: { publicId: string; fold
 
 function onCitySelect({ cityCode, cityName }: { cityCode: string; cityName: string }) {
   refreshSeq += 1
-  hideLoading()
   mapScope.value = { kind: 'city', cityCode, cityName }
   persistMapScope()
   folderFilter.value = 'all'
