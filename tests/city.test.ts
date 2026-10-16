@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   cityCodeFromName,
   cityFolderLabel,
+  cityFromAddress,
   extractCityName,
   matchCityFolder,
   normalizeCityName,
@@ -89,6 +90,37 @@ describe('cityCodeFromName', () => {
       cityName: '成都',
     })
     expect(cityIdentity(null)).toBeNull()
+  })
+})
+
+describe('cityFromAddress', () => {
+  it('普通地级市解析出 code 与展示名', () => {
+    expect(cityFromAddress('广东省广州市天河区天河路1号')).toEqual({
+      cityCode: '广州',
+      cityName: '广州',
+    })
+  })
+
+  it('直辖市', () => {
+    expect(cityFromAddress('北京市朝阳区东直门')).toEqual({ cityCode: '北京', cityName: '北京' })
+    expect(cityFromAddress('上海市浦东新区陆家嘴')).toEqual({ cityCode: '上海', cityName: '上海' })
+  })
+
+  it('自治州保留完整展示名，code 去尾缀', () => {
+    expect(cityFromAddress('新疆维吾尔自治区昌吉回族自治州昌吉市')).toEqual({
+      cityCode: '昌吉回族',
+      cityName: '昌吉回族自治州',
+    })
+  })
+
+  it('香港澳门特别行政区', () => {
+    expect(cityFromAddress('香港特别行政区九龙城区')).toEqual({ cityCode: '香港', cityName: '香港' })
+  })
+
+  it('无法识别时返回 null，调用方回退当前城市', () => {
+    expect(cityFromAddress('某知名餐厅三楼')).toBeNull()
+    expect(cityFromAddress('')).toBeNull()
+    expect(cityFromAddress(null)).toBeNull()
   })
 })
 

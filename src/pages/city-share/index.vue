@@ -7,6 +7,7 @@ const token = ref('')
 const code = ref('')
 const groupName = ref('')
 const created = ref(false)
+const joined = ref(false)
 const loading = ref(true)
 const errorMsg = ref('')
 
@@ -25,6 +26,7 @@ async function load() {
   try {
     const result = await acceptCityShare(token.value, code.value)
     groupName.value = result.name
+    joined.value = Boolean(result.duplicated)
     created.value = true
     setTimeout(() => {
       uni.reLaunch({ url: '/pages/index/index' })
@@ -66,12 +68,14 @@ onShareAppMessage(() => ({
     <view class="city-share-head">
       <text class="eyebrow">城市店铺</text>
       <text class="title">城市共享清单</text>
-      <text class="subtitle">正在为你创建可共同添加的共享清单</text>
+      <text class="subtitle">正在为你加入可共同添加的共享清单</text>
     </view>
 
-    <view v-if="loading" class="state">正在创建共享清单…</view>
+    <view v-if="loading" class="state">正在加入共享清单…</view>
     <view v-else-if="errorMsg" class="state error">{{ errorMsg }}</view>
-    <view v-else-if="created" class="state success">共享清单“{{ groupName }}”已创建，正在进入小程序…</view>
+    <view v-else-if="created" class="state success">
+      共享清单“{{ groupName }}”{{ joined ? '已加入' : '已创建' }}，正在进入小程序…
+    </view>
 
     <button class="open-btn" @click="openSearch">打开橙子吃吃</button>
   </view>

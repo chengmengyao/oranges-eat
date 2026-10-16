@@ -5,6 +5,7 @@ const { SHOP_CATEGORIES, validateShopInput } = require('./shop-input')
 const { shopRequestDocumentId } = require('./shop-request')
 const { MAX_SHOPS_PER_GROUP, evaluateMoveTarget, resolveFolderGroupId } = require('./move-target')
 const { cityCodeFromName, cityIdentity } = require('./city')
+const { cityShareGroupId, shopIdentityKey, dedupeShopsForCopy } = require('./city-share')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -134,10 +135,6 @@ function randomToken() {
   return crypto.randomBytes(32).toString('hex')
 }
 
-function cityShareGroupId(shareId, recipientOpenId) {
-  return crypto.createHash('sha256').update(`cityshare-group:${shareId}:${recipientOpenId}`).digest('hex').slice(0, 32)
-}
-
 async function rollbackCityShareGroup(groupId) {
   await Promise.all([
     db.collection(FOLDERS).where({ groupId }).remove(),
@@ -196,10 +193,17 @@ async function mapWithConcurrency(items, limit, mapper) {
 
 async function fetchAllDocs(collection, where, max = 1000) {
   // 云数据库单次最多返回 100 条，分页拉全，避免成员过多时静默丢组。
+  // 必须带稳定排序，否则 skip 分页可能在不同页返回同一条记录，导致同一清单被加载多次。
   const pageSize = 100
   const all = []
   for (let offset = 0; offset < max; offset += pageSize) {
-    const res = await db.collection(collection).where(where).skip(offset).limit(pageSize).get()
+    const res = await db
+      .collection(collection)
+      .where(where)
+      .orderBy('_id', 'asc')
+      .skip(offset)
+      .limit(pageSize)
+      .get()
     all.push(...res.data)
     if (res.data.length < pageSize) break
   }
@@ -433,30 +437,14 @@ async function listMyCityMapShops(event, openId) {
     })
   })
   result.sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))
-  return ok(result.slice(0, MAX_CITY_MAP_SHOPS))
+  // 城市视图合并「我所有清单的店铺 + 我的城市店铺」：同一家店可能因历史分享复制出现在多个清单里，
+  // 按物理身份去重，避免同一地点重复展示成一堆“相同数据”。
+  return ok(dedupeShopsForCopy(result).slice(0, MAX_CITY_MAP_SHOPS))
 }
 
 async function collectShareableCityShops(ownerOpenId, cityCode) {
-  const context = await loadMyCityContext(ownerOpenId)
-  const result = []
-  for (const shop of context.shops) {
-    const folder = context.foldersById.get(shop.folderId)
-    if (!folder || folder.groupId !== shop.groupId) continue
-    const identity = cityIdentity(folder)
-    if (!identity || identity.cityCode !== cityCode) continue
-    result.push(cityShopPublicView({
-      ...shop,
-      cityCode: identity.cityCode,
-      cityName: identity.cityName,
-    }))
-  }
-  const ownCityShops = await db.collection(CITY_SHOPS)
-    .where({ ownerOpenId, cityCode })
-    .limit(MAX_CITY_MAP_SHOPS)
-    .get()
-  result.push(...ownCityShops.data.map(cityShopPublicView))
-  result.sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))
-  return result.slice(0, MAX_CITY_MAP_SHOPS)
+  const records = await collectShareableCityShopRecords(ownerOpenId, cityCode)
+  return records.map(cityShopPublicView)
 }
 
 async function collectShareableCityShopRecords(ownerOpenId, cityCode) {
@@ -475,7 +463,53 @@ async function collectShareableCityShopRecords(ownerOpenId, cityCode) {
     .get()
   result.push(...ownCityShops.data)
   result.sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))
-  return result.slice(0, MAX_CITY_MAP_SHOPS)
+  // 分享者的店铺可能因历史原因散落在多个清单中，复制/展示前按物理身份去重，避免重复放大。
+  return dedupeShopsForCopy(result).slice(0, MAX_CITY_MAP_SHOPS)
+}
+
+async function ensureCityShareMember(groupId, openId, ownerOpenId, displayName, now) {
+  // 幂等地把分享者/领取人加进共享清单：成员 _id 固定，已存在则复用，已被移除则重新激活。
+  const targets = [{ openId: ownerOpenId, name: '分享者', role: 'owner', allowDelete: true }]
+  if (openId !== ownerOpenId) {
+    targets.push({ openId, name: displayName, role: 'member', allowDelete: false })
+  }
+  await Promise.all(targets.map(async (target) => {
+    const mid = memberId(groupId, target.openId)
+    const res = await db.collection(MEMBERS).doc(mid).get().catch(() => null)
+    const existing = res && res.data ? res.data : null
+    if (existing) {
+      if (existing.status !== 'active') {
+        await db.collection(MEMBERS).doc(mid).update({
+          data: {
+            displayName: target.name,
+            role: target.role,
+            allowDelete: target.allowDelete,
+            status: 'active',
+            joinedAt: now,
+            updatedAt: now,
+          },
+        })
+      }
+      return
+    }
+    try {
+      await db.collection(MEMBERS).add({
+        data: {
+          _id: mid,
+          groupId,
+          userOpenId: target.openId,
+          displayName: target.name,
+          role: target.role,
+          allowDelete: target.allowDelete,
+          status: 'active',
+          joinedAt: now,
+          updatedAt: now,
+        },
+      })
+    } catch (err) {
+      // 并发领取时同一成员可能已被另一请求写入，忽略主键冲突。
+    }
+  }))
 }
 
 async function acceptCityShare(event, openId) {
@@ -485,33 +519,40 @@ async function acceptCityShare(event, openId) {
   const share = await findCityShare(token, code)
   if (!share || Number(share.expiresAt) < Date.now()) return fail('分享链接已失效', 'SHARE_INVALID')
 
-  // 兼容旧版按随机 _id 建组的历史领取记录，避免重复建清单。
-  const legacyAccept = await db.collection(CITY_SHARE_ACCEPTS)
-    .where({ shareId: share._id, recipientOpenId: openId, status: 'active' })
+  const ownerOpenId = share.ownerOpenId
+  const cityCode = cityCodeFromName(share.cityCode || share.cityName)
+  const cityName = share.cityName || cityCode
+  if (!cityCode) return fail('分享链接已失效', 'SHARE_INVALID')
+
+  const groupName = `${cityName}共享清单`.slice(0, 30)
+  const now = Date.now()
+
+  // 一个「分享者 + 城市」共用一份共享清单：先按分享者 + 清单名查已存在的（兼容历史随机 _id），
+  // 命中则只把领取人加为成员，不再复制店铺、不再新建同名清单。
+  const existingRes = await db.collection(GROUPS)
+    .where({ ownerOpenId, name: groupName, status: 'active' })
+    .orderBy('createdAt', 'asc')
     .limit(1)
     .get()
-  if (legacyAccept.data[0]) {
-    const legacyGroup = await findGroupById(legacyAccept.data[0].groupId)
-    if (legacyGroup) {
-      return ok({ groupId: legacyGroup._id, publicId: legacyGroup.publicId, name: legacyGroup.name, duplicated: true })
-    }
+  const existing = existingRes.data[0]
+  if (existing) {
+    await ensureCityShareMember(existing._id, openId, ownerOpenId, displayName, now)
+    return ok({ groupId: existing._id, publicId: existing.publicId, name: existing.name, duplicated: true })
   }
 
-  // 用确定性 groupId 保证「同一分享 + 同一领取人」只会创建一个清单；并发时
-  // 另一请求会在 add 因 _id 冲突失败，随后按已领取返回，避免重复建清单。
-  const groupId = cityShareGroupId(share._id, openId)
-  const existingGroup = await findGroupById(groupId)
-  if (existingGroup) {
-    return ok({ groupId, publicId: existingGroup.publicId, name: existingGroup.name, duplicated: true })
+  // 并发兜底：确定性 groupId 保证同一分享者+城市只会创建一份。
+  const groupId = cityShareGroupId(ownerOpenId, cityCode)
+  const racedGroup = await findGroupById(groupId)
+  if (racedGroup) {
+    await ensureCityShareMember(racedGroup._id, openId, ownerOpenId, displayName, now)
+    return ok({ groupId: racedGroup._id, publicId: racedGroup.publicId, name: racedGroup.name, duplicated: true })
   }
 
-  const now = Date.now()
-  const groupName = `${share.cityName}共享清单`.slice(0, 30)
   const groupDoc = {
     _id: groupId,
     publicId: randomToken().slice(0, 32),
     name: groupName,
-    ownerOpenId: share.ownerOpenId,
+    ownerOpenId,
     visibility: 'public_read',
     status: 'active',
     createdAt: now,
@@ -521,58 +562,34 @@ async function acceptCityShare(event, openId) {
     await db.collection(GROUPS).add({ data: groupDoc })
   } catch (err) {
     const raced = await findGroupById(groupId)
-    if (raced) return ok({ groupId, publicId: raced.publicId, name: raced.name, duplicated: true })
+    if (raced) {
+      await ensureCityShareMember(raced._id, openId, ownerOpenId, displayName, now)
+      return ok({ groupId: raced._id, publicId: raced.publicId, name: raced.name, duplicated: true })
+    }
     throw err
   }
   try {
     const folderRes = await db.collection(FOLDERS).add({
       data: {
         groupId,
-        name: share.cityName,
-        cityCode: share.cityCode,
-        cityName: share.cityName,
+        name: cityName,
+        cityCode,
+        cityName,
         sortOrder: 0,
-        createdByOpenId: share.ownerOpenId,
+        createdByOpenId: ownerOpenId,
         createdAt: now,
         updatedAt: now,
       },
     })
-    const memberDocs = [
-      {
-        _id: memberId(groupId, share.ownerOpenId),
-        groupId,
-        userOpenId: share.ownerOpenId,
-        displayName: '分享者',
-        role: 'owner',
-        allowDelete: true,
-        status: 'active',
-        joinedAt: now,
-        updatedAt: now,
-      },
-    ]
-    // 分享者本人扫码时 openId 与 owner 相同，memberId 会重复导致 add 失败并留下孤儿清单，需去重。
-    if (openId !== share.ownerOpenId) {
-      memberDocs.push({
-        _id: memberId(groupId, openId),
-        groupId,
-        userOpenId: openId,
-        displayName,
-        role: 'member',
-        allowDelete: false,
-        status: 'active',
-        joinedAt: now,
-        updatedAt: now,
-      })
-    }
-    await Promise.all(memberDocs.map((data) => db.collection(MEMBERS).add({ data })))
+    await ensureCityShareMember(groupId, openId, ownerOpenId, displayName, now)
 
-    const sourceShops = await collectShareableCityShopRecords(share.ownerOpenId, share.cityCode)
+    const sourceShops = await collectShareableCityShopRecords(ownerOpenId, cityCode)
     await Promise.all(sourceShops.map((shop) => db.collection(SHOPS).add({
       data: {
         groupId,
         folderId: folderRes._id,
-        cityCode: share.cityCode,
-        cityName: share.cityName,
+        cityCode,
+        cityName,
         requestId: null,
         name: shop.name,
         category: shop.category,
@@ -580,15 +597,23 @@ async function acceptCityShare(event, openId) {
         longitude: shop.longitude,
         address: shop.address,
         remark: shop.remark || '',
-        createdByOpenId: share.ownerOpenId,
+        createdByOpenId: ownerOpenId,
         createdByName: '分享者',
-        updatedByOpenId: share.ownerOpenId,
+        updatedByOpenId: ownerOpenId,
         createdAt: shop.createdAt || now,
         updatedAt: shop.updatedAt || now,
       },
     })))
     await db.collection(CITY_SHARE_ACCEPTS).add({
-      data: { shareId: share._id, groupId, recipientOpenId: openId, status: 'active', createdAt: now },
+      data: {
+        shareId: share._id,
+        ownerOpenId,
+        cityCode,
+        groupId,
+        recipientOpenId: openId,
+        status: 'active',
+        createdAt: now,
+      },
     })
   } catch (err) {
     // 未能完整建好清单时回滚，避免重试因确定性 groupId 已存在而返回残缺清单。
@@ -674,15 +699,22 @@ async function updateCityShop(event, openId) {
   const expectedUpdatedAt = Number(event.expectedUpdatedAt)
   if (!Number.isFinite(expectedUpdatedAt)) return fail('数据已变化，请刷新后重试', 'CONFLICT')
   const now = Date.now()
+  // 可选改城市：识别不到目标城市时保留原城市（不误改）。
+  const nextCityCode = cityCodeFromName(normalizeText(event.cityCode || event.cityName, 64))
+  const nextCityName = normalizeText(event.cityName, 64)
+  const cityData = nextCityCode
+    ? { cityCode: nextCityCode, cityName: nextCityName || nextCityCode }
+    : {}
+  const updateData = { ...validation.data, updatedAt: now, ...cityData }
   const updateRes = await db.collection(CITY_SHOPS).where({
     _id: shopId,
     ownerOpenId: openId,
     updatedAt: _.eq(expectedUpdatedAt),
   }).update({
-    data: { ...validation.data, updatedAt: now },
+    data: updateData,
   })
   if (!updateRes.stats || updateRes.stats.updated !== 1) return fail('店铺已被其他人更新，请刷新后重试', 'CONFLICT')
-  return ok(cityShopView({ ...existing.data, ...validation.data, updatedAt: now }))
+  return ok(cityShopView({ ...existing.data, ...updateData }))
 }
 
 async function deleteCityShop(event, openId) {
@@ -1001,6 +1033,159 @@ async function deleteShop(event, openId) {
 
 // ---------- router ----------
 
+async function mergeDuplicateSharedGroups(event, openId) {
+  // 默认只扫描（dryRun），必须显式传 dryRun:false 才真正删除，避免误删。
+  const dryRun = event.dryRun !== false
+  // 只处理当前用户作为创建者的清单，绝不触碰他人数据。
+  const groups = await fetchAllDocs(GROUPS, { ownerOpenId: openId, status: 'active' }, 1000)
+  const sharedGroups = groups.filter(
+    (g) => typeof g.name === 'string' && g.name.endsWith('共享清单'),
+  )
+
+  // 同名「XX共享清单」视为同一城市的重复副本：按名称分桶，保留最早一份，其余合并进来。
+  const byName = new Map()
+  for (const group of sharedGroups) {
+    const list = byName.get(group.name) || []
+    list.push(group)
+    byName.set(group.name, list)
+  }
+  const plans = []
+  for (const list of byName.values()) {
+    if (list.length <= 1) continue
+    list.sort(
+      (a, b) => Number(a.createdAt) - Number(b.createdAt) || String(a._id).localeCompare(String(b._id)),
+    )
+    plans.push({ keepId: list[0]._id, duplicateIds: list.slice(1).map((g) => g._id) })
+  }
+
+  // 统计待迁移的成员与店铺（dryRun 预览）。
+  let movableMembers = 0
+  let movableShops = 0
+  const detail = []
+  for (const plan of plans) {
+    const keepShops = await fetchAllDocs(SHOPS, { groupId: plan.keepId }, MAX_SHOPS_PER_GROUP)
+    const seen = new Set(keepShops.map(shopIdentityKey))
+    let dupShops = 0
+    let dupMembers = 0
+    for (const dupId of plan.duplicateIds) {
+      const memberRes = await db.collection(MEMBERS)
+        .where({ groupId: dupId, status: 'active' })
+        .limit(200)
+        .get()
+      dupMembers += memberRes.data.length
+      const shops = await fetchAllDocs(SHOPS, { groupId: dupId }, MAX_SHOPS_PER_GROUP)
+      for (const shop of shops) {
+        const key = shopIdentityKey(shop)
+        if (!seen.has(key)) {
+          seen.add(key)
+          dupShops += 1
+        }
+      }
+    }
+    movableMembers += dupMembers
+    movableShops += dupShops
+    detail.push({ keepId: plan.keepId, duplicateGroups: plan.duplicateIds.length, movableMembers: dupMembers, movableShops: dupShops })
+  }
+
+  if (dryRun) {
+    return ok({
+      dryRun: true,
+      scannedSharedGroups: sharedGroups.length,
+      groupsToMerge: plans.length,
+      duplicateGroups: plans.reduce((sum, p) => sum + p.duplicateIds.length, 0),
+      movableMembers,
+      movableShops,
+      detail,
+    })
+  }
+
+  let movedMembers = 0
+  let movedShops = 0
+  let removedDuplicateShops = 0
+  for (const plan of plans) {
+    const folderRes = await db.collection(FOLDERS)
+      .where({ groupId: plan.keepId })
+      .orderBy('sortOrder', 'asc')
+      .limit(1)
+      .get()
+    const keepFolderId = folderRes.data[0] ? folderRes.data[0]._id : null
+    const keepShops = await fetchAllDocs(SHOPS, { groupId: plan.keepId }, MAX_SHOPS_PER_GROUP)
+    const seen = new Set(keepShops.map(shopIdentityKey))
+
+    for (const dupId of plan.duplicateIds) {
+      const now = Date.now()
+      // 迁移成员：跳过保留清单里已生效的同一用户。
+      const memberRes = await db.collection(MEMBERS)
+        .where({ groupId: dupId, status: 'active' })
+        .limit(200)
+        .get()
+      for (const m of memberRes.data) {
+        const mid = memberId(plan.keepId, m.userOpenId)
+        const alreadyRes = await db.collection(MEMBERS).doc(mid).get().catch(() => null)
+        const already = alreadyRes && alreadyRes.data ? alreadyRes.data : null
+        if (already && already.status === 'active') continue
+        const migrated = {
+          displayName: m.displayName,
+          role: m.role === 'owner' ? 'member' : m.role,
+          allowDelete: m.allowDelete === true,
+          status: 'active',
+          joinedAt: m.joinedAt || now,
+          updatedAt: now,
+        }
+        if (already) {
+          await db.collection(MEMBERS).doc(mid).update({ data: migrated })
+        } else {
+          await db.collection(MEMBERS).add({ data: { _id: mid, groupId: plan.keepId, userOpenId: m.userOpenId, ...migrated } })
+        }
+        movedMembers += 1
+      }
+
+      // 迁移店铺：只迁移保留清单里还没有的（按名称+经纬度去重），并把归属改到保留清单的城市下。
+      const shops = await fetchAllDocs(SHOPS, { groupId: dupId }, MAX_SHOPS_PER_GROUP)
+      for (const shop of shops) {
+        const key = shopIdentityKey(shop)
+        if (seen.has(key)) continue
+        seen.add(key)
+        await db.collection(SHOPS).doc(shop._id).update({
+          data: { groupId: plan.keepId, folderId: keepFolderId || shop.folderId || null },
+        })
+        movedShops += 1
+      }
+
+      // 领取记录改指向保留清单，避免后续按旧 groupId 查不到。
+      await db.collection(CITY_SHARE_ACCEPTS)
+        .where({ groupId: dupId })
+        .update({ data: { groupId: plan.keepId } })
+        .catch(() => {})
+
+      await rollbackCityShareGroup(dupId).catch(() => {})
+      await db.collection('invites').where({ groupId: dupId }).remove().catch(() => {})
+    }
+
+    // 保留清单内兜底去重（历史遗留的同名副本）。
+    const finalShops = await fetchAllDocs(SHOPS, { groupId: plan.keepId }, MAX_SHOPS_PER_GROUP)
+    const finalSeen = new Set()
+    for (const shop of finalShops) {
+      const key = shopIdentityKey(shop)
+      if (finalSeen.has(key)) {
+        await db.collection(SHOPS).doc(shop._id).remove().catch(() => {})
+        removedDuplicateShops += 1
+      } else {
+        finalSeen.add(key)
+      }
+    }
+  }
+
+  return ok({
+    dryRun: false,
+    mergedGroups: plans.length,
+    removedDuplicateGroups: plans.reduce((sum, p) => sum + p.duplicateIds.length, 0),
+    movedMembers,
+    movedShops,
+    removedDuplicateShops,
+  })
+}
+
 const actions = {
   listPublicShops,
   listPublicMapShops,
@@ -1019,6 +1204,7 @@ const actions = {
   createShop,
   updateShop,
   deleteShop,
+  mergeDuplicateSharedGroups,
 }
 
 exports.main = async (event = {}) => {

@@ -81,7 +81,11 @@ export async function createCityShop(
 
 export async function updateCityShop(
   shopId: string,
-  input: Omit<CreateShopInput, 'requestId'> & { expectedUpdatedAt: number },
+  input: Omit<CreateShopInput, 'requestId'> & {
+    expectedUpdatedAt: number
+    cityCode?: string
+    cityName?: string
+  },
 ): Promise<CityStandaloneShopView> {
   return callFunction('shopApi', { action: 'updateCityShop', shopId, ...input })
 }

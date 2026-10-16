@@ -31,8 +31,10 @@ import { CATEGORY_LABELS, PAGE_SIZE } from '@/constants/shop'
 import { validateShopForm, normalizeText } from '@/utils/shop-validation'
 import {
   cityFolderLabel,
+  cityFromAddress,
   extractCityName,
   matchCityFolder,
+  normalizeCityName,
 } from '@/utils/city'
 import { hideLoading, showLoading } from '@/utils/global-loading'
 import { takeQueuedCityAdd } from '@/utils/city-entry'
@@ -101,6 +103,8 @@ const cityTabLoading = ref(false)
 const locSeq = ref(0)
 const autoCitying = ref(false)
 const autoCityLabel = ref('')
+// 城市视图下按选点地址识别出的城市；未识别到时回退当前浏览城市
+const detectedCity = ref<{ cityCode: string; cityName: string } | null>(null)
 
 const anyOverlayOpen = computed(
   () =>
@@ -128,7 +132,12 @@ function isShopView(s: FoodShopView): s is ShopView | CityStandaloneShopView | C
 }
 
 function isStandaloneCityShop(s: FoodShopView): s is CityStandaloneShopView {
-  return 'cityCode' in s && !('sourceGroupId' in s)
+  // 城市店铺（不归属清单）：有 cityCode，且 sourceGroupId 缺失或为空。
+  // 城市视图聚合会把所有条目都带上 sourceGroupId（城市店铺为空串），
+  // 仅「存在该字段」不足以判定为清单店铺。
+  if (!('cityCode' in s)) return false
+  const sourceGroupId = (s as { sourceGroupId?: string }).sourceGroupId
+  return !sourceGroupId
 }
 
 const groupsLoadSeq = ref(0)
@@ -385,6 +394,10 @@ function openEdit(s: ShopView | CityStandaloneShopView | CityShopView) {
   editingId.value = s.id
   targetGroupId.value = 'cityCode' in s ? '' : groupId.value
   selectedFolderName.value = s.folderId ? store.folderName(s.folderId) || '' : '未分类'
+  // 城市店铺：用地址识别出的城市作为编辑时的展示与实际归属，便于改错。
+  if (isStandaloneCityShop(s)) {
+    detectedCity.value = cityFromAddress(s.address)
+  }
   form.value = {
     name: s.name,
     category: s.category,
@@ -407,6 +420,8 @@ const cityShareLoading = ref(false)
 const cityShareQrFileId = ref('')
 const showCityShareQr = ref(false)
 const cityShareError = ref('')
+// 同一城市复用已生成的分享 token，避免每次点击都新建 share 导致重复建共享清单
+const cityShareTokens = new Map<string, string>()
 
 async function shareCurrentCity() {
   if (foodScope.value.kind !== 'city') return
@@ -414,11 +429,18 @@ async function shareCurrentCity() {
   cityShareError.value = ''
   cityShareQrFileId.value = ''
   try {
-    const share = await createCityShare(foodScope.value.cityCode, foodScope.value.cityName)
-    const qr = await createCityShareQrCode(share.token)
+    let token = cityShareTokens.get(foodScope.value.cityCode)
+    if (!token) {
+      const share = await createCityShare(foodScope.value.cityCode, foodScope.value.cityName)
+      token = share.token
+      cityShareTokens.set(foodScope.value.cityCode, token)
+    }
+    const qr = await createCityShareQrCode(token)
     cityShareQrFileId.value = qr.fileID
     showCityShareQr.value = true
   } catch (err) {
+    // 复用的 token 失效时清理缓存，下次点击重新生成
+    cityShareTokens.delete(foodScope.value.cityCode)
     cityShareError.value = err instanceof Error ? err.message : '分享失败'
     showCityShareQr.value = true
   } finally {
@@ -453,6 +475,12 @@ const editCityText = computed(() => {
 })
 
 const editCityEmpty = computed(() => !selectedFolderName.value && !autoCitying.value)
+
+// 城市视图表单展示的城市：优先显示按选点识别出的城市
+const formCityName = computed(() => {
+  if (foodScope.value.kind !== 'city') return ''
+  return detectedCity.value?.cityName || foodScope.value.cityName
+})
 
 const targetPublicId = computed(() => {
   if (targetGroupId.value) {
@@ -567,6 +595,7 @@ function cancelAutoCity() {
   locSeq.value += 1
   autoCitying.value = false
   autoCityLabel.value = ''
+  detectedCity.value = null
 }
 
 function assignCityFolder(folder: { id: string; name: string }, beforeId: string | null) {
@@ -620,6 +649,39 @@ async function applyCityAutoMatch(
   }
 }
 
+/**
+ * 清单店铺防呆：所选城市子清单与地址实际城市不一致时，弹窗询问是否改到正确城市。
+ * 返回最终应使用的 folderId（未改动时原样返回）。
+ */
+async function reconcileFolderCity(address: string, folderId: string | null): Promise<string | null> {
+  // 跨清单移动时当前 folders 属于来源清单，无法就地比对，跳过防呆。
+  const ownerGroupId = targetGroupId.value || groupId.value
+  if (!ownerGroupId || ownerGroupId !== groupId.value || !isMember.value) return folderId
+  const folder = folderId ? folders.value.find((f) => f.id === folderId) : null
+  if (!folder) return folderId
+  const resolved = cityFromAddress(address)
+  if (!resolved) return folderId
+  const folderCity = folder.cityCode || normalizeCityName(folder.name)
+  if (!folderCity || folderCity === resolved.cityCode) return folderId
+
+  const change = await new Promise<boolean>((resolve) => {
+    uni.showModal({
+      title: '城市可能不对',
+      content: `这家店的地址在「${resolved.cityName}」，当前归在「${folder.name}」。是否改到「${resolved.cityName}」？`,
+      confirmText: '改到正确城市',
+      cancelText: '保持所选',
+      success: (res) => resolve(Boolean(res.confirm)),
+      fail: () => resolve(false),
+    })
+  })
+  if (!change) return folderId
+
+  const fullName = extractCityName(address)
+  if (!fullName) return folderId
+  await applyCityAutoMatch(fullName, folderId)
+  return form.value.folderId
+}
+
 function chooseLocation() {
   uni.chooseLocation({
     success: async (res) => {
@@ -632,10 +694,18 @@ function chooseLocation() {
       const seq = ++locSeq.value
       autoCitying.value = false
       autoCityLabel.value = ''
+      // 城市视图下店铺不归属清单，也不新建城市子清单；按选点地址识别城市，
+      // 保存时归到识别到的城市（不存在会自动出现），而不是当前浏览的城市。
+      if (foodScope.value.kind === 'city') {
+        const resolved = cityFromAddress(form.value.address)
+        detectedCity.value = resolved
+        if (resolved && resolved.cityCode !== foodScope.value.cityCode) {
+          uni.showToast({ title: `已识别到「${resolved.cityName}」`, icon: 'none' })
+        }
+        return
+      }
       const cityFullName = extractCityName(form.value.address)
       if (!cityFullName) return
-      // 城市视图下店铺保存为不归属清单的城市店铺，不在清单里归档或新建城市子清单。
-      if (foodScope.value.kind === 'city') return
       const beforeId = form.value.folderId
       // 城市已在当前加载的清单城市列表里：本地直接归档，无需等待云函数
       const ownerGroupId = currentOwnerGroupId()
@@ -692,7 +762,15 @@ async function saveForm() {
       // 保存失败后复用同一请求 ID，避免云函数已写入但响应丢失时重复创建。
       const requestId = createRequestId.value || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
       createRequestId.value = requestId
-      const created = foodScope.value.kind === 'city'
+      const scope = foodScope.value
+      const cityScope = scope.kind === 'city' ? scope : null
+      const resolvedCity = cityScope
+        ? detectedCity.value || { cityCode: cityScope.cityCode, cityName: cityScope.cityName }
+        : null
+      const groupFolderId = cityScope
+        ? null
+        : await reconcileFolderCity(address, form.value.folderId)
+      const created = cityScope
         ? await createCityShop({
             name,
             category: form.value.category,
@@ -702,8 +780,8 @@ async function saveForm() {
             remark,
             folderId: null,
             requestId,
-            cityCode: foodScope.value.cityCode,
-            cityName: foodScope.value.cityName,
+            cityCode: resolvedCity!.cityCode,
+            cityName: resolvedCity!.cityName,
           })
         : await createShop(targetGroupId.value || groupId.value, {
             name,
@@ -712,15 +790,28 @@ async function saveForm() {
             longitude: lng,
             address,
             remark,
-            folderId: form.value.folderId,
+            folderId: groupFolderId,
             requestId,
           })
       store.setLastAddedShopId(created.id)
-      uni.showToast({ title: '已添加', icon: 'success' })
+      if (cityScope && resolvedCity && resolvedCity.cityCode !== cityScope.cityCode) {
+        // 保存到了另一个城市：切换视图到该城市，让用户直接看到刚添加的店铺
+        foodScope.value = {
+          kind: 'city',
+          cityCode: resolvedCity.cityCode,
+          cityName: resolvedCity.cityName,
+        }
+        void loadCities()
+        uni.showToast({ title: `已添加到「${resolvedCity.cityName}」`, icon: 'success' })
+      } else {
+        uni.showToast({ title: '已添加', icon: 'success' })
+      }
     } else {
       const target = shops.value.find((s) => s.id === editingId.value) as FoodShopView | undefined
       if (!target) throw new Error('店铺已不存在')
       if (isStandaloneCityShop(target) && foodScope.value.kind === 'city') {
+        const prevCityCode = target.cityCode
+        const resolved = cityFromAddress(address)
         await updateCityShop(editingId.value, {
           name,
           category: form.value.category,
@@ -730,13 +821,27 @@ async function saveForm() {
           remark,
           folderId: null,
           expectedUpdatedAt: new Date(target.updatedAt).getTime(),
+          cityCode: resolved?.cityCode,
+          cityName: resolved?.cityName,
         })
-        uni.showToast({ title: '已保存', icon: 'success' })
         showForm.value = false
+        if (resolved && resolved.cityCode && resolved.cityCode !== prevCityCode) {
+          // 地址识别到另一个城市：把视图切过去，让用户直接看到改后的归属
+          foodScope.value = {
+            kind: 'city',
+            cityCode: resolved.cityCode,
+            cityName: resolved.cityName,
+          }
+          void loadCities()
+          uni.showToast({ title: `已移动到「${resolved.cityName}」`, icon: 'success' })
+        } else {
+          uni.showToast({ title: '已保存', icon: 'success' })
+        }
         await resetAndLoad()
         store.markDataChanged()
         return
       }
+      const groupFolderId = await reconcileFolderCity(address, form.value.folderId)
       const updated = await updateShop(groupId.value, editingId.value, {
         name,
         category: form.value.category,
@@ -744,7 +849,7 @@ async function saveForm() {
         longitude: lng,
         address,
         remark,
-        folderId: form.value.folderId,
+        folderId: groupFolderId,
         targetGroupId: targetGroupId.value,
         expectedUpdatedAt: new Date(target.updatedAt).getTime(),
       })
@@ -918,7 +1023,7 @@ onReachBottom(() => {
         </view>
 
         <view v-if="foodScope.kind === 'city'" class="picker-row city-scope-row">
-          <view class="picker-value">{{ foodScope.cityName }} · 不归属清单</view>
+          <view class="picker-value">{{ formCityName }} · 不归属清单</view>
         </view>
 
         <view v-else-if="formMode === 'create'" class="picker-row">

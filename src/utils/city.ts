@@ -44,6 +44,23 @@ export function extractCityName(address: string | null | undefined): string | nu
   return city
 }
 
+export interface ResolvedCity {
+  cityCode: string
+  cityName: string
+}
+
+/**
+ * 选点地址 → 城市身份（code + 展示名）。无法可靠识别时返回 null。
+ * 城市视图新增店铺时用它把店铺归到地址实际所在城市，而不是当前浏览的城市。
+ */
+export function cityFromAddress(address: string | null | undefined): ResolvedCity | null {
+  const fullName = extractCityName(address)
+  if (!fullName) return null
+  const cityCode = cityCodeFromName(fullName)
+  if (!cityCode) return null
+  return { cityCode, cityName: cityFolderLabel(fullName) || cityCode }
+}
+
 /**
  * 城市子清单的展示/新建名：去掉「市/地区/盟」尾缀，自治州等保留完整写法。
  */

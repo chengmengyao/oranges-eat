@@ -679,7 +679,10 @@ function onCitySelect({ cityCode, cityName }: { cityCode: string; cityName: stri
 }
 
 function cityShopOf(shop: MapShopView): CityShopView | null {
-  return 'sourceGroupName' in shop ? shop as CityShopView : null
+  if (!('sourceGroupName' in shop)) return null
+  // 只有来自某个清单的聚合店铺才显示来源；不归属清单的城市店铺（sourceGroupId 为空）不显示。
+  const sourceGroupId = (shop as { sourceGroupId?: string }).sourceGroupId
+  return sourceGroupId ? (shop as CityShopView) : null
 }
 
 onLoad((query) => {
