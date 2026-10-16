@@ -34,6 +34,7 @@ const currentGroup = ref<GroupView | null>(null)
 // 全局当前清单是否落在公开(访客)清单上：此时 Home 展示只读浏览卡而非成员管理
 const viewingPublic = ref(false)
 const viewingPublicName = ref('')
+const showGroupPicker = ref(false)
 
 const createMode = ref(false)
 const groupName = ref('')
@@ -79,15 +80,16 @@ function initialOf(name: string) {
 }
 
 function openGroupSwitcher() {
-  const names = groups.value.map((g) => g.name)
-  if (names.length <= 1) return
-  uni.showActionSheet({
-    itemList: names,
-    success: (res) => {
-      const g = groups.value[res.tapIndex]
-      if (g) switchGroup(g.id)
-    },
-  })
+  if (groups.value.length <= 1) {
+    uni.showToast({ title: '暂时没有其它清单可切换', icon: 'none' })
+    return
+  }
+  showGroupPicker.value = true
+}
+
+function onPickGroup({ publicId: pid }: { publicId: string }) {
+  const g = groups.value.find((x) => x.publicId === pid)
+  if (g && g.id !== currentGroupId.value) switchGroup(g.id)
 }
 
 function confirmEditCurrentGroup() {
@@ -260,6 +262,11 @@ function openAssignUncategorized() {
     .map((f) => ({ id: f.id, name: f.name }))
   uni.showActionSheet({
     itemList: [...folderOptions.map((f) => f.name), '新建城市…'],
+    fail: (err) => {
+      const msg = (err && (err as { errMsg?: string }).errMsg) || ''
+      if (msg.includes('cancel')) return
+      uni.showToast({ title: '城市过多，请到店铺里单独归类', icon: 'none' })
+    },
     success: async (res) => {
       const idx = res.tapIndex
       const groupId = currentGroupId.value
@@ -848,6 +855,15 @@ onShow(() => {
         <text>创建新清单</text>
       </button>
     </view>
+
+    <group-city-picker
+      v-model="showGroupPicker"
+      mode="group"
+      :options="groups"
+      :current-public-id="currentGroup?.publicId || ''"
+      title="选择清单"
+      @select="onPickGroup"
+    />
   </view>
 </template>
 
